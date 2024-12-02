@@ -96,7 +96,6 @@ export class ProjectManagementService {
 
   async setProjectConfigOption(configOptions: ProjectConfigDto): Promise<ProjectConfigResDto> {
     const res: ProjectConfigResDto = {} as ProjectConfigResDto
-    delete configOptions['headers']
 
     const entities = {
       platforms: { repo: this.platformEntity, entity: PlatformEntity },
@@ -226,7 +225,6 @@ export class ProjectManagementService {
 
   // todo get default project
   async getUserProjects(email: string): Promise<MemberProjectsResDto> {
-    this.logger.debug(`Get Projects for users: ${email}`)
     const memberProjectBuilder = this.memberProjectRepo.createQueryBuilder("member_project")
     const subQuery = memberProjectBuilder
       .select('member_project.projectId')

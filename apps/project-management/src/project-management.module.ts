@@ -12,9 +12,9 @@ import { ApmModule } from '@app/common/apm/apm.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({isGlobal: true}),
-    LoggerModule.forRoot({httpCls: false, jsonLogger: process.env.LOGGER_FORMAT === 'JSON', name: "Project-management"}),
     ApmModule,
+    ConfigModule.forRoot({isGlobal: true}),
+    LoggerModule.forRoot({httpCls: false, jsonLogger: process.env.LOGGER_FORMAT === 'JSON', name: "Project-Management"}),
     DatabaseModule,
     JwtModule.registerAsync({
       useClass: UploadJwtConfigService
