@@ -2,7 +2,7 @@ import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
 import { RegulationTypeEntity } from "./regulation-type.entity";
 import { ProjectEntity } from "./project.entity";
 
-@Entity()
+@Entity('regulation')
 export class RegulationEntity {
     @PrimaryGeneratedColumn()
     id: number;
