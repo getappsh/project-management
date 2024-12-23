@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { RegulationTypeDto } from './regulation-type.dto';
+import { RegulationEntity } from '@app/common/database/entities';
 
 export class RegulationDto {
     @ApiProperty({ description: 'ID of the regulation' })
@@ -22,4 +23,19 @@ export class RegulationDto {
 
     @ApiProperty({ description: 'Order of the regulation' })
     order: number;
+
+    fromRegulationEntity(regulation: RegulationEntity) {
+        this.id = regulation.id;
+        this.name = regulation.name;
+        this.description = regulation.description;
+        this.type = regulation.type;
+        this.project = regulation?.project?.id;
+        this.config = regulation.config;
+        this.order = regulation.order;
+        return this;
+    }
+
+    toString() {
+        return JSON.stringify(this);
+    }
 }
