@@ -10,6 +10,11 @@ export * from './dto/project-config-res.dto'
 export * from './dto/project-releases.dto'
 export * from './dto/project-token.dto'
 
+export * from './dto/regulation/create-regulation.dto'
+export * from './dto/regulation/update-regulation.dto'
+export * from './dto/regulation/regulation.dto'
+export * from './dto/regulation/regulation-type.dto'
+
 export * from './stubs/edit-project-member.dto.stub'
 export * from './stubs/project-member.dto.stub'
 export * from './stubs/project.dto.sub'

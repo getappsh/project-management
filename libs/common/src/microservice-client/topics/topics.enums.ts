@@ -59,6 +59,11 @@ export const ProjectManagementTopics = {
     GET_DEVICES_BY_PROJECT: `getapp-project-management.get-devices-by-project${region}`,
     GET_DEVICES_BY_PLATFORM: `getapp-project-management.get-devices-by-platform${region}`,
 
+    GET_REGULATION_TYPES: `getapp-project-management.get-regulation-types${region}`,
+    GET_PROJECT_REGULATIONS: `getapp-project-management.get-project-regulations${region}`,
+    CREATE_REGULATION: `getapp-project-management.create-regulation${region}`,
+    UPDATE_REGULATION: `getapp-project-management.update-regulation${region}`,
+
     CHECK_HEALTH: `getapp-project-management.check-health${region}`
 } as const
 
