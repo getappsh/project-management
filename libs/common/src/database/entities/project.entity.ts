@@ -1,6 +1,7 @@
 import { Column, Entity, Index, OneToMany } from "typeorm";
 import { BaseEntity } from "./base.entity";
 import { MemberProjectEntity } from "./member_project.entity";
+import { RegulationEntity } from "./regulation.entity";
 
 @Entity("project")
 export class ProjectEntity extends BaseEntity{
@@ -15,6 +16,9 @@ export class ProjectEntity extends BaseEntity{
     @Column('simple-array', {name: "tokens", nullable: true})
     tokens: string[]
    
+    @OneToMany(() => RegulationEntity, regulation => regulation.project)
+    regulations: RegulationEntity[]
+    
     @OneToMany(() => MemberProjectEntity, memberProject => memberProject)
     memberProject: MemberProjectEntity[];
 
