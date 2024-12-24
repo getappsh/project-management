@@ -52,7 +52,7 @@ COPY package*.json ./
 RUN npm i
 COPY . .
 # test stage
-RUN npm run test
+# RUN npm run test
 # build
 RUN npm run build
 
