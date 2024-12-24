@@ -1,17 +1,20 @@
-import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, CategoryEntity, FormationEntity, OperationSystemEntity, PlatformEntity, DeviceEntity, DiscoveryMessageEntity } from '@app/common/database/entities';
-import { ConflictException, HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, RegulationEntity, RegulationTypeEntity } from '@app/common/database/entities';
+import { ConflictException, HttpException, HttpStatus, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Entity, In, Repository } from 'typeorm';
-import { ProjectDto } from '@app/common/dto/project-management/dto/project.dto';
+import { In, Repository } from 'typeorm';
 import { ProjectMemberDto } from '@app/common/dto/project-management/dto/project-member.dto';
 import { EditProjectMemberDto } from '@app/common/dto/project-management/dto/edit-project-member.dto';
 import {
-  ProjectConfigDto, DeviceResDto, ProjectReleasesDto, ProjectTokenDto, ProjectConfigResDto,
-  MemberProjectResDto, MemberProjectsResDto, MemberResDto, ProjectResDto
+  DeviceResDto, ProjectReleasesDto, ProjectTokenDto,
+  MemberProjectResDto, MemberProjectsResDto, MemberResDto, ProjectDto,
+  CreateProjectDto,
+  RegulationTypeDto,
+  RegulationDto,
+  CreateRegulationDto,
+  UpdateRegulationDto
 } from '@app/common/dto/project-management';
 
-type configOptionsType = PlatformEntity | FormationEntity | CategoryEntity | OperationSystemEntity
 
 @Injectable()
 export class ProjectManagementService {
@@ -20,14 +23,12 @@ export class ProjectManagementService {
   constructor(
     private readonly jwtService: JwtService,
     @InjectRepository(UploadVersionEntity) private readonly uploadVersionEntity: Repository<UploadVersionEntity>,
-    @InjectRepository(CategoryEntity) private readonly categoryEntity: Repository<CategoryEntity>,
-    @InjectRepository(FormationEntity) private readonly formationEntity: Repository<FormationEntity>,
-    @InjectRepository(OperationSystemEntity) private readonly operationSystemEntity: Repository<OperationSystemEntity>,
-    @InjectRepository(PlatformEntity) private readonly platformEntity: Repository<PlatformEntity>,
     @InjectRepository(MemberProjectEntity) private readonly memberProjectRepo: Repository<MemberProjectEntity>,
     @InjectRepository(MemberEntity) private readonly memberRepo: Repository<MemberEntity>,
     @InjectRepository(ProjectEntity) private readonly projectRepo: Repository<ProjectEntity>,
     @InjectRepository(DeviceEntity) private readonly deviceRepo: Repository<DeviceEntity>,
+    @InjectRepository(RegulationEntity) private readonly regulationRepo: Repository<RegulationEntity>,
+    @InjectRepository(RegulationTypeEntity) private readonly regulationTypeRepo: Repository<RegulationTypeEntity>,
   ) { }
 
   getMemberInProjectByEmail(projectId: number, email: string) {
@@ -80,51 +81,8 @@ export class ProjectManagementService {
     return memberProject
   }
 
-  async getProjectConfigOption(): Promise<ProjectConfigResDto> {
-    const platforms = await this.platformEntity.find({ select: ['name'] });
-    const formations = await this.formationEntity.find({ select: ['name'] });
-    const categories = await this.categoryEntity.find({ select: ['name'] });
-    const OS = await this.operationSystemEntity.find({ select: ['name'] });
 
-    return {
-      platforms: platforms.map(val => val.name),
-      formations: formations.map(val => val.name),
-      categories: categories.map(val => val.name),
-      operationsSystem: OS.map(val => val.name),
-    } as ProjectConfigResDto
-  }
-
-  async setProjectConfigOption(configOptions: ProjectConfigDto): Promise<ProjectConfigResDto> {
-    const res: ProjectConfigResDto = {} as ProjectConfigResDto
-    delete configOptions['headers']
-
-    const entities = {
-      platforms: { repo: this.platformEntity, entity: PlatformEntity },
-      formations: { repo: this.formationEntity, entity: FormationEntity },
-      categories: { repo: this.categoryEntity, entity: CategoryEntity },
-      operationsSystem: { repo: this.operationSystemEntity, entity: OperationSystemEntity },
-    };
-
-    for (const key in configOptions) {
-      const { repo, entity } = entities[key];
-      const incomingItems = Array.isArray(configOptions[key]) ? configOptions[key] : [configOptions[key]]
-      const itemToSave: configOptionsType[] = []
-      for (const item of incomingItems) {
-        const itemName = await repo.findOne({ where: { name: item } });
-        if (!itemName) {
-          this.logger.debug(`Set item ${item} into ${key} `)
-          const newItem = new entity();
-          newItem.name = item;
-          itemToSave.push(newItem);
-        }
-      }
-      const savedItems = (await repo.save(itemToSave)).map(item => item.name)
-      res[key] = savedItems
-    }
-    return res
-  }
-
-  async createProject(data: { member: any, project: ProjectDto }) {
+  async createProject(data: { member: any, project: CreateProjectDto }) {
     let member = await this.saveMemberIfNotExist(
       data.member.email,
       data.member.given_name,
@@ -150,7 +108,7 @@ export class ProjectManagementService {
 
     mp = await this.memberProjectRepo.save(mp);
     this.logger.debug(`project saved! ${mp}`)
-    return new ProjectResDto().fromProjectEntity(project)
+    return new ProjectDto().fromProjectEntity(project)
   }
 
   async addMemberToProject(data: { user: any, projectMember: ProjectMemberDto }): Promise<MemberProjectResDto> {
@@ -237,6 +195,7 @@ export class ProjectManagementService {
     const query = memberProjectBuilder
       .select('member_project.role')
       .leftJoinAndSelect('member_project.project', 'project')
+      .leftJoinAndSelect('project.regulations', 'regulation')
       .leftJoinAndSelect('member_project.member', 'member')
       .where(`member_project.projectId IN (${subQuery})`)
 
@@ -249,17 +208,13 @@ export class ProjectManagementService {
       let tokens: string = memberProject.project_tokens
 
       if (!acc.projects[projectId]) {
-        let prj = new ProjectResDto()
+        let prj = new ProjectDto()
         prj.id = projectId;
-        prj.componentName = memberProject.project_component_name;
-        prj.OS = memberProject.project_OS;
-        prj.platformType = memberProject.project_platform_type;
-        prj.formation = memberProject.project_formation;
-        prj.category = memberProject.project_category;
-        prj.artifactType = memberProject.project_artifact_type;
+        prj.name = memberProject.project_name;
         prj.description = memberProject.project_description;
         prj.tokens = tokens != null ? tokens.split(',') : undefined
         prj.members = [];
+        prj.regulation = [];
 
         acc.projects[projectId] = prj
       }
@@ -334,7 +289,7 @@ export class ProjectManagementService {
   async createToken(data: { user: any, projectId: number, memberProject: MemberProjectEntity }): Promise<ProjectTokenDto> {
     const memberProject = data.memberProject;
 
-    const token = this.generateToken(data.user.email, data.projectId, memberProject.project.componentName);
+    const token = this.generateToken(data.user.email, data.projectId, memberProject.project.name);
     this.logger.log(`Generated Token: ${token.projectToken}`)
     if (memberProject.project.tokens == null) {
       memberProject.project.tokens = [token.projectToken];
@@ -363,6 +318,93 @@ export class ProjectManagementService {
     });
 
     return projectReleases
+  }
+
+
+  getRegulationTypes(): Promise<RegulationTypeDto[]> {
+    this.logger.log('Get all regulation types');
+    return this.regulationTypeRepo.find();
+  }
+
+  async getProjectRegulations(projectId: number): Promise<RegulationDto[]> {
+    this.logger.log('Get project regulations');
+    return this.regulationRepo.find({
+      where: {
+        project: { id: projectId }
+      },
+      relations: {project: true}, 
+      select: {project: {id: true}},
+      order: {order: 'ASC'}
+    }).then(regulation => regulation.map(r => new RegulationDto().fromRegulationEntity(r)));
+  }
+
+  async createRegulation(regulation: CreateRegulationDto): Promise<RegulationDto> {
+    this.logger.log('Create regulation');
+
+    const regulationType = await this.regulationTypeRepo.findOne({ where: { id: regulation.typeId } });
+    if (!regulationType) {
+      throw new NotFoundException(`Regulation type with id ${regulation.typeId} not found`);
+    }
+
+    const project = await this.projectRepo.findOne({ where: { id: regulation.projectId } });
+    if (!project) {
+      throw new NotFoundException(`Project with id ${regulation.projectId} not found`);
+    }
+
+    const newRegulation = new RegulationEntity();
+    newRegulation.name = regulation.name;
+    newRegulation.description = regulation.description;
+    newRegulation.config = regulation.config;
+    newRegulation.order = regulation.order;
+    newRegulation.type = regulationType;
+    newRegulation.project = project;
+    
+    return this.regulationRepo.save(newRegulation).then(r => new RegulationDto().fromRegulationEntity(r));
+  }
+
+  async updateRegulation(regulation: UpdateRegulationDto): Promise<RegulationDto> {
+    this.logger.log('Update regulation');
+   
+    const currentRegulation = await this.regulationRepo.findOne({ where: { id: regulation.id } });
+    if (!currentRegulation) {
+      throw new NotFoundException(`Regulation with id ${regulation.id} not found`);
+    }
+    
+    const regulationEntity = new RegulationEntity();
+    regulationEntity.name = regulation?.name;
+    regulationEntity.description = regulation?.description;
+    regulationEntity.config = regulation?.config;
+    regulationEntity.order = regulation?.order;
+    if (regulation?.typeId) {
+      const regulationType = await this.regulationTypeRepo.findOne({ where: { id: regulation.typeId } });
+      if (!regulationType) {
+        throw new NotFoundException(`Regulation type with id ${regulation.typeId} not found`);
+      }
+      regulationEntity.type = regulationType;
+    } 
+    
+    return this.regulationRepo.save({...currentRegulation, ...regulationEntity}).then(r => new RegulationDto().fromRegulationEntity(r));
+  }
+
+  
+  async getRegulationById(regulationId: number): Promise<RegulationDto> {
+    this.logger.log('Get regulation by id');
+    const regulation = await this.regulationRepo.findOne({ where: { id: regulationId }, relations: {project: true}, select: {project: {id: true}} });
+    console.log(regulation);
+    if (!regulation) {
+      throw new NotFoundException(`Regulation with id ${regulationId} not found`);
+    }
+    return new RegulationDto().fromRegulationEntity(regulation);
+  }
+
+  async deleteRegulation(regulationId: number): Promise<string> {
+    this.logger.log('Delete regulation');
+    
+    let {raw, affected} = await this.regulationRepo.delete({ id: regulationId });
+    if (affected == 0) {
+      throw new NotFoundException(`Regulation with id ${regulationId} not found`);
+    }
+    return 'Regulation deleted';
   }
 
 }

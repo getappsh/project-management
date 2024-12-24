@@ -3,7 +3,7 @@ import { promises as fs } from "fs";
 
 import { CONFIG_OPTION, CREATE_TOKEN, MANIFEST, PROJECT, PROJECT_MANAGEMENT, RELEASES, UPDATE_UPLOAD_STATUS, UPLOAD } from "@app/root/api/src/utils/paths";
 
-import { ProjectDto } from "@app/common/dto/project-management";
+import { CreateProjectDto } from "@app/common/dto/project-management";
 import { MemberProjectResDto, MemberProjectsResDto, ProjectResDto } from "@app/root/project-management/src/dto/member-project-res.dto";
 import { ProjectReleasesDto } from "@app/root/project-management/src/dto/project-releases.dto";
 import { UpdateUploadStatusDto } from "@app/common/dto/upload";
@@ -24,7 +24,7 @@ export const createProjectUntilUploadTest = async (request: SuperAgentTest, awsR
   const configOption = await getProjectConfigOption(request);
   const componentName = process.env.COMPONENT_NAME;
 
-  const project: ProjectDto = {
+  const project: CreateProjectDto = {
     componentName,
     OS: configOption.operationsSystem,
     platformType: configOption.platforms,
