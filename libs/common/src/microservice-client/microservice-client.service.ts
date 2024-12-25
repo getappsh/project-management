@@ -85,7 +85,8 @@ export class MicroserviceClient {
 
   
   private formatDataV2(data: any) {
-    const headers = { traceId: this.cls.getId() || "" };
+    const user = JSON.stringify(this.cls.get("user"));
+    const headers = { traceId: this.cls.getId() || "", user};
     
     return {
       headers,
