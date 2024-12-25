@@ -10,7 +10,8 @@ import {
   EditProjectMemberDto, CreateProjectDto, ProjectMemberDto, 
   ProjectTokenDto, MemberResDto, MemberProjectsResDto,
   CreateRegulationDto,
-  UpdateRegulationDto
+  UpdateRegulationDto,
+  RegulationParams
 } from '@app/common/dto/project-management';
 import { RpcPayload } from '@app/common/microservice-client';
 import * as fs from 'fs';
@@ -76,31 +77,35 @@ export class ProjectManagementController {
     return this.projectManagementService.getRegulationTypes()
   }
 
+  @UseGuards(MemberInProjectGuard)
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_REGULATIONS)
-  getProjectRegulations(@RpcPayload() projectId: number){
+  getProjectRegulations(@RpcPayload('projectId') projectId: number){
     return this.projectManagementService.getProjectRegulations(projectId)
   }
 
-  // TODO: create and update regulation need to be associated with a project
-  @MessagePattern(ProjectManagementTopics.CREATE_REGULATION)
+  
+  @UseGuards(MemberInProjectGuard)
+  @MessagePattern(ProjectManagementTopics.GET_PROJECT_REGULATION_BY_ID)
+  getRegulationById(@RpcPayload() params: RegulationParams){
+    return this.projectManagementService.getRegulationById(params)
+  }
+
+  @UseGuards(MemberInProjectGuard)
+  @MessagePattern(ProjectManagementTopics.CREATE_PROJECT_REGULATION)
   createRegulation(@RpcPayload() regulation: CreateRegulationDto){
     return this.projectManagementService.createRegulation(regulation)
   }
 
-  // TODO: create and update regulation need to be associated with a project
-  @MessagePattern(ProjectManagementTopics.UPDATE_REGULATION)
+  @UseGuards(MemberInProjectGuard)
+  @MessagePattern(ProjectManagementTopics.UPDATE_PROJECT_REGULATION)
   updateRegulation(@RpcPayload() regulation: UpdateRegulationDto){
     return this.projectManagementService.updateRegulation(regulation)
   }
 
-  @MessagePattern(ProjectManagementTopics.GET_REGULATION_BY_ID)
-  getRegulationById(@RpcPayload() regulationId: number){
-    return this.projectManagementService.getRegulationById(regulationId)
-  }
-
-  @MessagePattern(ProjectManagementTopics.DELETE_REGULATION)
-  deleteRegulation(@RpcPayload() regulationId: number){
-    return this.projectManagementService.deleteRegulation(regulationId)
+  @UseGuards(MemberInProjectGuard)
+  @MessagePattern(ProjectManagementTopics.DELETE_PROJECT_REGULATION)
+  deleteRegulation(@RpcPayload() params: RegulationParams){
+    return this.projectManagementService.deleteRegulation(params)
   }
 
   @MessagePattern(ProjectManagementTopics.CHECK_HEALTH)

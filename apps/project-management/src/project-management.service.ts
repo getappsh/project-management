@@ -12,7 +12,8 @@ import {
   RegulationTypeDto,
   RegulationDto,
   CreateRegulationDto,
-  UpdateRegulationDto
+  UpdateRegulationDto,
+  RegulationParams
 } from '@app/common/dto/project-management';
 
 
@@ -32,6 +33,7 @@ export class ProjectManagementService {
   ) { }
 
   getMemberInProjectByEmail(projectId: number, email: string) {
+    this.logger.debug(`Get member in project with email: ${email} and projectId: ${projectId}`)
     return this.memberProjectRepo.findOne({
       relations: ['project', 'member'],
       where: {
@@ -327,7 +329,7 @@ export class ProjectManagementService {
   }
 
   async getProjectRegulations(projectId: number): Promise<RegulationDto[]> {
-    this.logger.log('Get project regulations');
+    this.logger.log(`Get all regulations for project with id ${projectId}`);
     return this.regulationRepo.find({
       where: {
         project: { id: projectId }
@@ -365,9 +367,9 @@ export class ProjectManagementService {
   async updateRegulation(regulation: UpdateRegulationDto): Promise<RegulationDto> {
     this.logger.log('Update regulation');
    
-    const currentRegulation = await this.regulationRepo.findOne({ where: { id: regulation.id } });
+    const currentRegulation = await this.regulationRepo.findOne({ where: { id: regulation.regulationId, project: {id: regulation.projectId}} });
     if (!currentRegulation) {
-      throw new NotFoundException(`Regulation with id ${regulation.id} not found`);
+      throw new NotFoundException(`Regulation with ID ${regulation.regulationId} for Project ID ${regulation.projectId} not found`);
     }
     
     const regulationEntity = new RegulationEntity();
@@ -387,22 +389,21 @@ export class ProjectManagementService {
   }
 
   
-  async getRegulationById(regulationId: number): Promise<RegulationDto> {
+  async getRegulationById(params: RegulationParams): Promise<RegulationDto> {
     this.logger.log('Get regulation by id');
-    const regulation = await this.regulationRepo.findOne({ where: { id: regulationId }, relations: {project: true}, select: {project: {id: true}} });
-    console.log(regulation);
+    const regulation = await this.regulationRepo.findOne({ where: { id: params.regulationId, project: {id: params.projectId} }, relations: {project: true}, select: {project: {id: true}} });
     if (!regulation) {
-      throw new NotFoundException(`Regulation with id ${regulationId} not found`);
+      throw new NotFoundException(`Regulation with ID ${params.regulationId} for Project ID ${params.projectId} not found`);
     }
     return new RegulationDto().fromRegulationEntity(regulation);
   }
 
-  async deleteRegulation(regulationId: number): Promise<string> {
+  async deleteRegulation(params: RegulationParams): Promise<string> {
     this.logger.log('Delete regulation');
     
-    let {raw, affected} = await this.regulationRepo.delete({ id: regulationId });
+    let {raw, affected} = await this.regulationRepo.delete({ id: params.regulationId, project: {id: params.projectId} });
     if (affected == 0) {
-      throw new NotFoundException(`Regulation with id ${regulationId} not found`);
+      throw new NotFoundException(`Regulation with ID ${params.regulationId} for Project ID ${params.projectId} not found`);
     }
     return 'Regulation deleted';
   }
