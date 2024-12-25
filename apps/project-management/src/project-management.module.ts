@@ -8,6 +8,7 @@ import { ProjectManagementController } from './project-management.controller';
 import { ProjectManagementService } from './project-management.service';
 import { LoggerModule } from '@app/common/logger/logger.module';
 import { ApmModule } from '@app/common/apm/apm.module';
+import { SeederService } from './utils/seeder.service';
 
 
 @Module({
@@ -26,6 +27,7 @@ import { ApmModule } from '@app/common/apm/apm.module';
     ]),
   ],
   controllers: [ProjectManagementController],
-  providers: [ProjectManagementService],
+  providers: [ProjectManagementService, SeederService],
+  exports: [SeederService],
 })
 export class ProjectManagementModule {}
