@@ -1,43 +1,46 @@
-import { CanActivate, ExecutionContext, Logger } from "@nestjs/common";
+import { CanActivate, ExecutionContext, ForbiddenException, Logger } from "@nestjs/common";
 import { Injectable } from "@nestjs/common/decorators/core/injectable.decorator";
 import { ProjectManagementService } from "../project-management.service";
-import { KafkaContext, TcpContext } from "@nestjs/microservices";
+import { extractHeaders, extractRequest } from "@app/common/microservice-client";
+import { Reflector } from "@nestjs/core";
 
 @Injectable()
 export class MemberInProjectGuard implements CanActivate {
 
     private readonly logger =  new Logger(MemberInProjectGuard.name)
-    constructor(private readonly projectManagementService: ProjectManagementService){}
-    
-    async canActivate(context: ExecutionContext){
-        const input = context.switchToRpc();
-        const msgContext = input.getContext();
+    constructor(private readonly projectManagementService: ProjectManagementService, private reflector: Reflector){}
 
-        const request = input.getData();
-        let user, projectId;
-        if (msgContext instanceof KafkaContext){
-            user = msgContext.getMessage()?.headers?.user;
-            projectId = request?.projectId;
-        }else if(msgContext instanceof TcpContext){
-            user = request?.headers?.user;
-            projectId = request?.value?.projectId;
-        }
+    async canActivate(context: ExecutionContext){
+        const roles = this.reflector.get<string[]>('roles', context.getHandler());
+
+        let headers = extractHeaders(context)
+        let request = extractRequest(context);
+
+        let user = headers?.user;
+        let projectId = request?.projectId
 
         if (!user){
-            this.logger.debug(`User is not found in the request.`)
-            return false;
+            throw new ForbiddenException(`User is not found in the request.`);
         }
         if (!projectId){
-            this.logger.debug(`ProjectId is not found in the request.`)
-            return false;
+            throw new ForbiddenException(`ProjectId is not found in the request.`);
         }
 
-        const memberProject =  await this.projectManagementService.getMemberInProjectByEmail(projectId, user?.email);
+        const memberProject = await this.projectManagementService.getMemberInProjectByEmail(projectId, user?.email);
         if (!memberProject){
-            this.logger.debug(`User ${user?.email} is not a member of the project.`)
-            return false;
+            throw new ForbiddenException(`User ${user?.email} is not a member of the project.`);
         }
-        request.memberProject = memberProject;
+
+        if (!roles || roles.length === 0) {
+            return true;
+        }
+        
+        const hasRole = roles.some(role => role == memberProject.role);
+
+        if (!hasRole){
+            throw new ForbiddenException(`User ${user?.email} does not have the required role.`);
+
+        }
         return true
     }
 }
