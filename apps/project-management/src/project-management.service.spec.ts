@@ -292,7 +292,7 @@ describe('ProjectManagementService', () => {
       };
       const pm = memberProjectEntityStub();
 
-      const result = await service.editMember(data);
+      const result = await service.editProjectMember(data);
 
       expect(result).toBeInstanceOf(MemberResDto);
       expect(result.id).toBe(data.projectMember.memberId);
@@ -317,7 +317,7 @@ describe('ProjectManagementService', () => {
       };
       jest.spyOn(memberProjectRepo, 'findOne').mockResolvedValueOnce(null);
 
-      await expect(service.editMember(data)).rejects.toThrowError(HttpException);
+      await expect(service.editProjectMember(data)).rejects.toThrowError(HttpException);
 
       expect(memberProjectRepo.findOne).toHaveBeenCalledTimes(1);
 
@@ -337,7 +337,7 @@ describe('ProjectManagementService', () => {
       jest.spyOn(memberRepo, 'findOne').mockResolvedValueOnce(null);
 
 
-      await expect(service.editMember(data)).rejects.toThrowError('User not found');
+      await expect(service.editProjectMember(data)).rejects.toThrowError('User not found');
       expect(memberProjectRepo.findOne).toHaveBeenCalledTimes(2);
       expect(memberProjectRepo.findOne).toReturnWith(Promise.resolve(null));
 
@@ -355,7 +355,7 @@ describe('ProjectManagementService', () => {
       };
       data.projectMember.role = RoleInProject.PROJECT_OWNER;
 
-      await expect(service.editMember(data)).rejects.toThrowError("Not allowed to set member to Owner (Only one Owner Possible)");
+      await expect(service.editProjectMember(data)).rejects.toThrowError("Not allowed to set member to Owner (Only one Owner Possible)");
       expect(memberProjectRepo.findOne).toHaveBeenCalledTimes(2);
       expect(memberProjectRepo.save).not.toHaveBeenCalled();
       expect(memberRepo.save).not.toHaveBeenCalled();
