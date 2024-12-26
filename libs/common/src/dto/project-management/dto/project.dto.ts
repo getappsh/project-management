@@ -55,4 +55,6 @@ export class CreateProjectDto{
     @IsOptional()    
     @ApiProperty({required: false})
     description: string;
+
+    username: string;
 }

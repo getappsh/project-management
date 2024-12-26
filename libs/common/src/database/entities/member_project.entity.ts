@@ -20,7 +20,7 @@ export class MemberProjectEntity extends BaseEntity{
     member: MemberEntity
 
     @Column({name: "role", type: "enum", enum: RoleInProject, default: RoleInProject.PROJECT_MEMBER})
-    role: string
+    role: RoleInProject
 
 
     toString(){
