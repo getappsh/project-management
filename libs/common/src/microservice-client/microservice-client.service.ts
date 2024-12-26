@@ -85,8 +85,10 @@ export class MicroserviceClient {
 
   
   private formatDataV2(data: any) {
-    const user = JSON.stringify(this.cls.get("user"));
-    const headers = { traceId: this.cls.getId() || "", user};
+    const user = this.cls.get("user");
+    const headers = { 
+      traceId: this.cls.getId() || "", 
+      user: this.isKafka() ? JSON.stringify(user) : user };
     
     return {
       headers,
