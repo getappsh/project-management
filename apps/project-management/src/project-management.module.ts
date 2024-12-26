@@ -8,6 +8,7 @@ import { ProjectManagementController } from './project-management.controller';
 import { ProjectManagementService } from './project-management.service';
 import { LoggerModule } from '@app/common/logger/logger.module';
 import { ApmModule } from '@app/common/apm/apm.module';
+import { OidcModule } from '@app/common/oidc/oidc.module';
 
 
 @Module({
@@ -24,6 +25,7 @@ import { ApmModule } from '@app/common/apm/apm.module';
       RegulationEntity, RegulationTypeEntity,
       DeviceEntity,
     ]),
+    OidcModule
   ],
   controllers: [ProjectManagementController],
   providers: [ProjectManagementService],
