@@ -1,21 +1,46 @@
-import { CanActivate, ExecutionContext, Logger } from "@nestjs/common";
+import { CanActivate, ExecutionContext, ForbiddenException, Logger } from "@nestjs/common";
 import { Injectable } from "@nestjs/common/decorators/core/injectable.decorator";
 import { ProjectManagementService } from "../project-management.service";
+import { extractHeaders, extractRequest } from "@app/common/microservice-client";
+import { Reflector } from "@nestjs/core";
 
 @Injectable()
 export class MemberInProjectGuard implements CanActivate {
 
     private readonly logger =  new Logger(MemberInProjectGuard.name)
-    constructor(private readonly projectManagementService: ProjectManagementService){}
-    
+    constructor(private readonly projectManagementService: ProjectManagementService, private reflector: Reflector){}
+
     async canActivate(context: ExecutionContext){
-        const request = context.switchToHttp().getRequest();
-        const memberProject =  await this.projectManagementService.getMemberInProjectByEmail(request.projectId, request.user.email);
-        if (!memberProject){
-            this.logger.debug(`User ${request.user.email} is not allowed to enter this project.`)
-            return false;
+        const roles = this.reflector.get<string[]>('roles', context.getHandler());
+
+        let headers = extractHeaders(context)
+        let request = extractRequest(context);
+
+        let user = headers?.user;
+        let projectId = request?.projectId
+
+        if (!user){
+            throw new ForbiddenException(`User is not found in the request.`);
         }
-        request.memberProject = memberProject;
+        if (!projectId){
+            throw new ForbiddenException(`ProjectId is not found in the request.`);
+        }
+
+        const memberProject = await this.projectManagementService.getMemberInProjectByEmail(projectId, user?.email);
+        if (!memberProject){
+            throw new ForbiddenException(`User ${user?.email} is not a member of the project.`);
+        }
+
+        if (!roles || roles.length === 0) {
+            return true;
+        }
+        
+        const hasRole = roles.some(role => role == memberProject.role);
+
+        if (!hasRole){
+            throw new ForbiddenException(`User ${user?.email} does not have the required role.`);
+
+        }
         return true
     }
 }

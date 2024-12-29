@@ -1,19 +1,21 @@
 import { ProjectManagementTopics } from '@app/common/microservice-client/topics';
 import { Controller, Logger } from '@nestjs/common';
-import { UseGuards } from '@nestjs/common/decorators/core/use-guards.decorator';
 import { MessagePattern } from '@nestjs/microservices';
 import { ProjectManagementService } from './project-management.service';
-import { MemberInProjectGuard } from './guards/member-in-project.guard';
-import { MemberProjectEntity } from '@app/common/database/entities';
 import { DeviceResDto } from '../../../libs/common/src/dto/project-management/dto/device-res.dto';
 import {
-  EditProjectMemberDto, CreateProjectDto, ProjectMemberDto, 
+  EditProjectMemberDto, CreateProjectDto, AddMemberToProjectDto, 
   ProjectTokenDto, MemberResDto, MemberProjectsResDto,
   CreateRegulationDto,
-  UpdateRegulationDto
+  UpdateRegulationDto,
+  RegulationParams,
+  ProjectMemberParams
 } from '@app/common/dto/project-management';
 import { RpcPayload } from '@app/common/microservice-client';
 import * as fs from 'fs';
+import { AuthUser } from './utils/auth-user.decorator';
+import { MemberInProject } from './decorators/member-in-project.decorator';
+import { RoleInProject } from '@app/common/database/entities';
 
 @Controller()
 export class ProjectManagementController {
@@ -23,23 +25,26 @@ export class ProjectManagementController {
 
 
   @MessagePattern(ProjectManagementTopics.CREATE_PROJECT)
-  createProject(@RpcPayload() data: { member: any, project: CreateProjectDto }) {
-    return this.projectManagementService.createProject(data);
+  createProject(@RpcPayload() project: CreateProjectDto) {
+    return this.projectManagementService.createProject(project);
   }
 
-  @MessagePattern(ProjectManagementTopics.ADD_NEW_MEMBER)
-  addMemberToProject(@RpcPayload() data: { user: any, projectMember: ProjectMemberDto }) {
-    return this.projectManagementService.addMemberToProject(data);
+  @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
+  @MessagePattern(ProjectManagementTopics.ADD_PROJECT_NEW_MEMBER)
+  addMemberToProject(@RpcPayload() projectMember: AddMemberToProjectDto ) {
+    return this.projectManagementService.addMemberToProject(projectMember);
   }
 
-  @MessagePattern(ProjectManagementTopics.REMOVE_MEMBER)
-  removeMemberFromProject(@RpcPayload() data: any) {
-    return this.projectManagementService.removeMemberFromProject(data);
+  @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
+  @MessagePattern(ProjectManagementTopics.REMOVE_PROJECT_MEMBER)
+  removeMemberFromProject(@RpcPayload() params: ProjectMemberParams, @AuthUser("email") authEmail: string) {
+    return this.projectManagementService.removeMemberFromProject(params, authEmail);
   }
 
-  @MessagePattern(ProjectManagementTopics.EDIT_MEMBER)
-  editMember(@RpcPayload() data: { user: any, projectMember: EditProjectMemberDto }): Promise<MemberResDto> {
-    return this.projectManagementService.editMember(data);
+  @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
+  @MessagePattern(ProjectManagementTopics.EDIT_PROJECT_MEMBER)
+  editProjectMember(@RpcPayload() projectMember: EditProjectMemberDto): Promise<MemberResDto> {
+    return this.projectManagementService.editProjectMember(projectMember);
   }
 
   @MessagePattern(ProjectManagementTopics.GET_USER_PROJECTS)
@@ -47,15 +52,16 @@ export class ProjectManagementController {
     return this.projectManagementService.getUserProjects(email);
   }
 
-  @UseGuards(MemberInProjectGuard)
-  @MessagePattern(ProjectManagementTopics.CREATE_TOKEN)
-  createToken(@RpcPayload() data: { user: any, projectId: number, memberProject: MemberProjectEntity }): Promise<ProjectTokenDto> {
-    return this.projectManagementService.createToken(data);
+  @MemberInProject()
+  @MessagePattern(ProjectManagementTopics.CREATE_PROJECT_TOKEN)
+  createToken(@RpcPayload("projectId")  projectId: number): Promise<ProjectTokenDto> {
+    return this.projectManagementService.createToken(projectId);
   }
-  @UseGuards(MemberInProjectGuard)
+
+  @MemberInProject()
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_RELEASES)
-  getProjectReleases(@RpcPayload() data: { user: any, projectId: number, memberProject: MemberProjectEntity }) {
-    return this.projectManagementService.getProjectReleases(data);
+  getProjectReleases(@RpcPayload('projectId') projectId: number) {
+    return this.projectManagementService.getProjectReleases(projectId);
   }
 
   @MessagePattern(ProjectManagementTopics.GET_DEVICES_BY_CATALOG_ID)
@@ -76,31 +82,35 @@ export class ProjectManagementController {
     return this.projectManagementService.getRegulationTypes()
   }
 
+  @MemberInProject()
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_REGULATIONS)
-  getProjectRegulations(@RpcPayload() projectId: number){
+  getProjectRegulations(@RpcPayload('projectId') projectId: number){
     return this.projectManagementService.getProjectRegulations(projectId)
   }
 
-  // TODO: create and update regulation need to be associated with a project
-  @MessagePattern(ProjectManagementTopics.CREATE_REGULATION)
+  
+  @MemberInProject()
+  @MessagePattern(ProjectManagementTopics.GET_PROJECT_REGULATION_BY_ID)
+  getRegulationById(@RpcPayload() params: RegulationParams){
+    return this.projectManagementService.getRegulationById(params)
+  }
+
+  @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
+  @MessagePattern(ProjectManagementTopics.CREATE_PROJECT_REGULATION)
   createRegulation(@RpcPayload() regulation: CreateRegulationDto){
     return this.projectManagementService.createRegulation(regulation)
   }
 
-  // TODO: create and update regulation need to be associated with a project
-  @MessagePattern(ProjectManagementTopics.UPDATE_REGULATION)
+  @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
+  @MessagePattern(ProjectManagementTopics.UPDATE_PROJECT_REGULATION)
   updateRegulation(@RpcPayload() regulation: UpdateRegulationDto){
     return this.projectManagementService.updateRegulation(regulation)
   }
 
-  @MessagePattern(ProjectManagementTopics.GET_REGULATION_BY_ID)
-  getRegulationById(@RpcPayload() regulationId: number){
-    return this.projectManagementService.getRegulationById(regulationId)
-  }
-
-  @MessagePattern(ProjectManagementTopics.DELETE_REGULATION)
-  deleteRegulation(@RpcPayload() regulationId: number){
-    return this.projectManagementService.deleteRegulation(regulationId)
+  @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
+  @MessagePattern(ProjectManagementTopics.DELETE_PROJECT_REGULATION)
+  deleteRegulation(@RpcPayload() params: RegulationParams){
+    return this.projectManagementService.deleteRegulation(params)
   }
 
   @MessagePattern(ProjectManagementTopics.CHECK_HEALTH)
