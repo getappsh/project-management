@@ -11,17 +11,17 @@ export class UserDto {
   @IsString()
   @IsOptional()
   @ApiProperty({ required: false })
-  username: string;
+  username?: string;
 
   @IsString()
   @IsOptional()
   @ApiProperty({ required: false })
-  firstName: string;
+  firstName?: string;
 
   @IsString()
   @IsOptional()
   @ApiProperty({ required: false })
-  lastName: string;
+  lastName?: string;
 
   static fromUserDto(user: UserDto): UserDto {
     const userDto = new UserDto();

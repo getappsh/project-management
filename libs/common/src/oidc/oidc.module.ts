@@ -5,10 +5,11 @@ import { DBService } from "./db.service";
 import { DatabaseModule } from "../database/database.module";
 import { MemberEntity } from "../database/entities";
 import { TypeOrmModule } from "@nestjs/typeorm";
+import { MailModule } from "../mail/mail.module";
 
 @Module({})
 export class OidcModule {
-  static forRoot(provider: 'oidc' | 'db'): DynamicModule {
+  static forRoot(): DynamicModule {
 
     const getOidcProvider = () => {
       switch (process.env.OIDC_PROVIDER) {
@@ -19,9 +20,9 @@ export class OidcModule {
       }
     }
 
-    const serviceProvider = {
-      provide: 'OidcService',
-      useClass: provider === 'oidc' ? getOidcProvider() : DBService,
+    const oidcProvider = {
+      provide: 'OidcProviderService',
+      useClass: getOidcProvider(),
     };
 
     return {
@@ -29,10 +30,11 @@ export class OidcModule {
       imports: [
         HttpModule,
         DatabaseModule,
-        TypeOrmModule.forFeature([MemberEntity])
+        TypeOrmModule.forFeature([MemberEntity]),
+        MailModule
       ],
-      providers: [serviceProvider],
-      exports: [serviceProvider],
+      providers: [oidcProvider, DBService],
+      exports: [oidcProvider],
     };
   }
 

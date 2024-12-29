@@ -25,7 +25,7 @@ import { OidcModule } from '@app/common/oidc/oidc.module';
       RegulationEntity, RegulationTypeEntity,
       DeviceEntity,
     ]),
-    OidcModule
+    OidcModule.forRoot(),
   ],
   controllers: [ProjectManagementController],
   providers: [ProjectManagementService],
