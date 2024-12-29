@@ -16,6 +16,7 @@ export class SeederService {
         const defaultTypes = [
             { name: 'Boolean', description: 'A regulation that expects a true/false result' },
             { name: 'Threshold', description: 'A regulation that expects a value to meet a threshold' },
+            { name: 'JUnit', description: 'A regulation that validates JUnit XML test results' },
         ];
 
         for (const type of defaultTypes) {
