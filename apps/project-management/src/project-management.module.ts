@@ -8,6 +8,7 @@ import { ProjectManagementController } from './project-management.controller';
 import { ProjectManagementService } from './project-management.service';
 import { LoggerModule } from '@app/common/logger/logger.module';
 import { ApmModule } from '@app/common/apm/apm.module';
+import { OidcModule } from '@app/common/oidc/oidc.module';
 import { SeederService } from './utils/seeder.service';
 
 
@@ -25,6 +26,7 @@ import { SeederService } from './utils/seeder.service';
       RegulationEntity, RegulationTypeEntity,
       DeviceEntity,
     ]),
+    OidcModule.forRoot(),
   ],
   controllers: [ProjectManagementController],
   providers: [ProjectManagementService, SeederService],
