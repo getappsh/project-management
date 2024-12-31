@@ -11,6 +11,7 @@ import { ApmModule } from '@app/common/apm/apm.module';
 import { OidcModule } from '@app/common/oidc/oidc.module';
 import { SeederService } from './utils/seeder.service';
 import { RegulationService } from './regulation.service';
+import { RegulationEnforcementService } from './regulation-enforcement.service';
 
 
 @Module({
@@ -30,7 +31,7 @@ import { RegulationService } from './regulation.service';
     OidcModule.forRoot(),
   ],
   controllers: [ProjectManagementController],
-  providers: [ProjectManagementService, RegulationService,SeederService],
+  providers: [ProjectManagementService, RegulationService, SeederService, RegulationEnforcementService],
   exports: [SeederService],
 })
 export class ProjectManagementModule {}

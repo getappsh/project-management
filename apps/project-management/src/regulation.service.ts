@@ -3,6 +3,7 @@ import { CreateRegulationDto, RegulationDto, RegulationParams, RegulationStatusD
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
+import { RegulationEnforcementService } from "./regulation-enforcement.service";
 
 @Injectable()
 export class RegulationService {
@@ -14,6 +15,7 @@ export class RegulationService {
     @InjectRepository(RegulationStatusEntity) private readonly regulationStatusRepo: Repository<RegulationStatusEntity>,
     @InjectRepository(UploadVersionEntity) private readonly uploadVersionRepo: Repository<UploadVersionEntity>,
     @InjectRepository(ProjectEntity) private readonly projectRepo: Repository<ProjectEntity>,
+    private readonly enforcementService: RegulationEnforcementService
   ) { }
 
 
@@ -47,6 +49,9 @@ export class RegulationService {
       throw new NotFoundException(`Project with id ${regulation.projectId} not found`);
     }
 
+    if (regulationType.name == "Boolean"){
+      regulation.config = undefined;
+    }
     const newRegulation = new RegulationEntity();
     newRegulation.name = regulation.name;
     newRegulation.description = regulation.description;
@@ -55,6 +60,7 @@ export class RegulationService {
     newRegulation.type = regulationType;
     newRegulation.project = project;
 
+    this.enforcementService.validateConfig(newRegulation);
     return this.regulationRepo.save(newRegulation).then(r => new RegulationDto().fromRegulationEntity(r));
   }
 
@@ -79,7 +85,10 @@ export class RegulationService {
       regulationEntity.type = regulationType;
     }
 
-    return this.regulationRepo.save({ ...currentRegulation, ...regulationEntity }).then(r => new RegulationDto().fromRegulationEntity(r));
+    const updatedRegulation = { ...currentRegulation, ...regulationEntity };
+
+    this.enforcementService.validateConfig(updatedRegulation);
+    return this.regulationRepo.save(updatedRegulation).then(r => new RegulationDto().fromRegulationEntity(r));
   }
 
 
@@ -125,23 +134,24 @@ export class RegulationService {
 
     const {regulation, version} = await this.getRegulationAndVersion(dto.regulationId, dto.versionId, dto.projectId);
 
+    const isCompliant = await this.enforcementService.enforce(regulation, dto.value);
+
     await this.regulationStatusRepo
       .createQueryBuilder()
       .insert()
       .values({
         value: dto.value,
         reportDetails: dto.reportDetails,
+        isCompliant: isCompliant,
         version: version,
         regulation: regulation
       })
       .orUpdate(
-        ['value', 'reportDetails'],
+        ['value', 'reportDetails', 'isCompliant'],
         "regulation_version_unique_constraint",
        )
       .execute();
           
-  
-    // TODO validate compliance
     return this.getVersionRegulationStatus(dto as RegulationStatusParams);
   }
 
@@ -149,8 +159,7 @@ export class RegulationService {
   async setComplianceStatus(dto: SetRegulationCompliancyDto): Promise<RegulationStatusDto> {
     this.logger.log('Set compliance status');
     const {regulation, version} = await this.getRegulationAndVersion(dto.regulationId, dto.versionId, dto.projectId);
-  
-    const res = await this.regulationStatusRepo
+    await this.regulationStatusRepo
       .createQueryBuilder()
       .insert()
       .values({
