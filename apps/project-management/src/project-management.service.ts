@@ -44,10 +44,10 @@ export class ProjectManagementService {
     });
   }
 
-  private async getOrCreateMember(email: string): Promise<MemberEntity> {
+  private async getOrCreateMember(email: string, invite?: boolean): Promise<MemberEntity> {
 
     try {
-      let member = await this.memberRepo.findOne({ where: { email: email } })
+      let member = await this.getMemberByEmail(email);
       if (!member) {
         this.logger.debug("User is not exist, create him.");
         member = new MemberEntity()
@@ -58,7 +58,12 @@ export class ProjectManagementService {
           member.firstName = user[0].firstName;
           member.lastName = user[0].lastName;
         } else {
-          this.oidcService.inviteUser({ email });
+          if (invite) {
+            this.oidcService.inviteUser({ email });
+          } else {
+            this.logger.error(`User with email ${email} not found`);
+            throw new NotFoundException(`User with email ${email} not found`);
+          }
         }
         member = await this.memberRepo.save(member);
       }
@@ -103,6 +108,8 @@ export class ProjectManagementService {
     project.name = projectDto.name;
     project.description = projectDto.description;
 
+    let member = await this.getOrCreateMember(projectDto.username, false)
+
     try {
       project = await this.projectRepo.save(project);
     } catch (error) {
@@ -113,7 +120,6 @@ export class ProjectManagementService {
       throw error;
     }
 
-    let member = await this.getOrCreateMember(projectDto.username);
     this.logger.debug(`Member: ${member}`)
 
     let mp = new MemberProjectEntity();
@@ -127,12 +133,14 @@ export class ProjectManagementService {
     return new ProjectDto().fromProjectEntity(project)
   }
 
-
-
   async addMemberToProject(projectMember: AddMemberToProjectDto): Promise<MemberProjectResDto> {
     this.logger.debug(`Add member to project: ${projectMember.email}`)
 
-    let member = await this.getOrCreateMember(projectMember.email);
+    let member = await this.getOrCreateMember(projectMember.email).catch(error => {
+      this.logger.error(`Failed to add member ${projectMember.email} to project ${projectMember.projectId}, Err: ${error}`);
+    });
+    if (!member) return;
+
     this.logger.debug(`Member: ${member}`)
 
     let project = await this.getProject(projectMember.projectId);
@@ -205,6 +213,14 @@ export class ProjectManagementService {
     let member = await this.memberRepo.findOneBy({ id: memberId })
     if (!member) {
       throw new NotFoundException(`Member with id ${memberId} not found`);
+    }
+    return member;
+  }
+
+  private async getMemberByEmail(email: string): Promise<MemberEntity> {
+    let member = await this.memberRepo.findOneBy({ email })
+    if (!member) {
+      throw new NotFoundException(`Member with email ${email} not found`);
     }
     return member;
   }
