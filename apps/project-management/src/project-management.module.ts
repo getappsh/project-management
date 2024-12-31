@@ -10,6 +10,7 @@ import { LoggerModule } from '@app/common/logger/logger.module';
 import { ApmModule } from '@app/common/apm/apm.module';
 import { OidcModule } from '@app/common/oidc/oidc.module';
 import { SeederService } from './utils/seeder.service';
+import { RegulationService } from './regulation.service';
 
 
 @Module({
@@ -29,7 +30,7 @@ import { SeederService } from './utils/seeder.service';
     OidcModule.forRoot(),
   ],
   controllers: [ProjectManagementController],
-  providers: [ProjectManagementService, SeederService],
+  providers: [ProjectManagementService, RegulationService,SeederService],
   exports: [SeederService],
 })
 export class ProjectManagementModule {}
