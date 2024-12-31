@@ -49,6 +49,7 @@ export const ProjectManagementTopics = {
     CREATE_PROJECT: `getapp-project-management.create-project${region}`,
     CREATE_PROJECT_TOKEN: `getapp-project-management.create-project-token${region}`,
     ADD_PROJECT_NEW_MEMBER: `getapp-project-management.add-project-new-member${region}`,
+    CONFIRM_PROJECT_MEMBER: `getapp-project-management.confirm-project-member${region}`,
     EDIT_PROJECT_MEMBER: `getapp-project-management.edit-project-member${region}`,
     REMOVE_PROJECT_MEMBER: `getapp-project-management.remove-project-member${region}`,
     GET_PROJECT_RELEASES: `getapp-project-management.get-project-releases${region}`,
