@@ -64,6 +64,12 @@ export const ProjectManagementTopics = {
     UPDATE_PROJECT_REGULATION: `getapp-project-management.update-project-regulation${region}`,
     DELETE_PROJECT_REGULATION: `getapp-project-management.delete-project-regulation${region}`,
 
+    GET_VERSION_REGULATIONS_STATUSES: `getapp-project-management.get-version-regulation-statuses${region}`,
+    GET_VERSION_REGULATION_STATUS_BY_ID: `getapp-project-management.get-version-regulation-status-by-id${region}`,
+    SET_VERSION_REGULATION_STATUS: `getapp-project-management.set-version-regulation-status${region}`,
+    SET_VERSION_REGULATION_COMPLIANCE: `getapp-project-management.set-version-regulation-compliance${region}`,
+    DELETE_VERSION_REGULATION_STATUS: `getapp-project-management.delete-version-regulation-status${region}`,
+
     CHECK_HEALTH: `getapp-project-management.check-health${region}`
 } as const
 
