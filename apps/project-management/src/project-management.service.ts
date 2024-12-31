@@ -1,4 +1,4 @@
-import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, RegulationEntity, RegulationTypeEntity } from '@app/common/database/entities';
+import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, RegulationEntity, RegulationTypeEntity, MemberProjectStatusEnum } from '@app/common/database/entities';
 import { ConflictException, HttpException, HttpStatus, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -139,6 +139,7 @@ export class ProjectManagementService {
     let member = await this.getOrCreateMember(projectMember.email).catch(error => {
       this.logger.error(`Failed to add member ${projectMember.email} to project ${projectMember.projectId}, Err: ${error}`);
     });
+
     if (!member) return;
 
     this.logger.debug(`Member: ${member}`)
@@ -146,9 +147,16 @@ export class ProjectManagementService {
     let project = await this.getProject(projectMember.projectId);
     this.logger.debug(`Project: ${project}`)
 
-    let mp = new MemberProjectEntity();
-    mp.member = member;
-    mp.project = project;
+    let mp = await this.memberProjectRepo.findOne({ where: { member: { id: member.id }, project: { id: project.id } } })
+    if (!mp) {
+      mp = new MemberProjectEntity();
+      mp.member = member;
+      mp.project = project;
+      mp.status = MemberProjectStatusEnum.INVITED;
+    } else {
+      mp.status = MemberProjectStatusEnum.ACTIVE;
+    }
+
     mp.role = projectMember.role;
 
     await this.memberProjectRepo.upsert(mp, ["project", "member"]);
@@ -237,6 +245,7 @@ export class ProjectManagementService {
 
     const query = memberProjectBuilder
       .select('member_project.role')
+      .select('member_project.status')
       .leftJoinAndSelect('member_project.project', 'project')
       .leftJoinAndSelect('project.regulations', 'regulation')
       .leftJoinAndSelect('member_project.member', 'member')
@@ -249,6 +258,14 @@ export class ProjectManagementService {
       const projectId = memberProject.project_id;
 
       let tokens: string = memberProject.project_tokens
+
+      if (memberProject.member_email == email) {
+        if (memberProject.member_project_status === MemberProjectStatusEnum.INVITED) {
+          acc.invitedProjects.push(projectId)
+        } else if (memberProject.member_project_status === MemberProjectStatusEnum.INACTIVE) {
+          acc.inactiveProjects.push(projectId)
+        }
+      }
 
       if (!acc.projects[projectId]) {
         let prj = new ProjectDto()
@@ -277,12 +294,24 @@ export class ProjectManagementService {
       }
 
       return acc;
-    }, { member: null, projects: {} });
+    }, { member: null, projects: {}, invitedProjects: [], inactiveProjects: [] });
 
-
+    // TODO write test for this
+    // imaging active invited and inactive projects
     let mbProjectsRes = new MemberProjectsResDto()
-    mbProjectsRes.projects = Object.values(groupedResult.projects);
     mbProjectsRes.member = groupedResult.member;
+    mbProjectsRes.invitedProjects = groupedResult.invitedProjects.map((id: number) => {
+      const pro = groupedResult.projects[id];
+      delete groupedResult.projects[id];
+      return pro
+    })
+    
+    groupedResult.inactiveProjects.map((id: number) => {
+      delete groupedResult.projects[id];
+    })
+    
+    mbProjectsRes.projects = Object.values(groupedResult.projects);
+
     return mbProjectsRes;
   }
 
