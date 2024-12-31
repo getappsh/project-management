@@ -2,14 +2,18 @@ import { ProjectManagementTopics } from '@app/common/microservice-client/topics'
 import { Controller, Logger } from '@nestjs/common';
 import { MessagePattern } from '@nestjs/microservices';
 import { ProjectManagementService } from './project-management.service';
-import { DeviceResDto } from '../../../libs/common/src/dto/project-management/dto/device-res.dto';
+import { DeviceResDto } from '@app/common/dto/project-management/dto/device-res.dto';
 import {
   EditProjectMemberDto, CreateProjectDto, AddMemberToProjectDto, 
   ProjectTokenDto, MemberResDto, MemberProjectsResDto,
   CreateRegulationDto,
   UpdateRegulationDto,
   RegulationParams,
-  ProjectMemberParams
+  ProjectMemberParams,
+  SetRegulationStatusDto,
+  SetRegulationCompliancyDto,
+  RegulationStatusParams,
+  VersionRegulationStatusParams
 } from '@app/common/dto/project-management';
 import { RpcPayload } from '@app/common/microservice-client';
 import * as fs from 'fs';
@@ -112,6 +116,38 @@ export class ProjectManagementController {
   deleteRegulation(@RpcPayload() params: RegulationParams){
     return this.projectManagementService.deleteRegulation(params)
   }
+
+  @MemberInProject()
+  @MessagePattern(ProjectManagementTopics.SET_VERSION_REGULATION_STATUS)
+  setRegulationStatus(@RpcPayload() dto: SetRegulationStatusDto){
+    return this.projectManagementService.setRegulationStatus(dto)
+  }
+
+  @MemberInProject(RoleInProject.PROJECT_OWNER)
+  @MessagePattern(ProjectManagementTopics.SET_VERSION_REGULATION_COMPLIANCE)
+  setComplianceStatus(@RpcPayload() dto: SetRegulationCompliancyDto){
+    return this.projectManagementService.setComplianceStatus(dto)
+  }
+
+  @MemberInProject()
+  @MessagePattern(ProjectManagementTopics.GET_VERSION_REGULATION_STATUS_BY_ID)
+  getVersionRegulationStatus(@RpcPayload() params: RegulationStatusParams){
+    return this.projectManagementService.getVersionRegulationStatus(params)
+  }
+
+  @MemberInProject()
+  @MessagePattern(ProjectManagementTopics.GET_VERSION_REGULATIONS_STATUSES)
+  getVersionRegulationsStatuses(@RpcPayload() dto: VersionRegulationStatusParams){
+    return this.projectManagementService.getVersionRegulationsStatuses(dto)
+    
+  }
+
+  @MemberInProject()
+  @MessagePattern(ProjectManagementTopics.DELETE_VERSION_REGULATION_STATUS)
+  deleteVersionRegulationStatus(@RpcPayload() params: RegulationStatusParams){
+    return this.projectManagementService.deleteVersionRegulationStatus(params)
+  }
+  
 
   @MessagePattern(ProjectManagementTopics.CHECK_HEALTH)
   healthCheckSuccess(){
