@@ -12,6 +12,7 @@ import { OidcModule } from '@app/common/oidc/oidc.module';
 import { SeederService } from './utils/seeder.service';
 import { RegulationService } from './regulation.service';
 import { RegulationEnforcementService } from './regulation-enforcement.service';
+import { JUnitParserService } from './utils/junit-parser.service';
 
 
 @Module({
@@ -31,7 +32,7 @@ import { RegulationEnforcementService } from './regulation-enforcement.service';
     OidcModule.forRoot(),
   ],
   controllers: [ProjectManagementController],
-  providers: [ProjectManagementService, RegulationService, SeederService, RegulationEnforcementService],
+  providers: [ProjectManagementService, RegulationService, SeederService, RegulationEnforcementService, JUnitParserService],
   exports: [SeederService],
 })
 export class ProjectManagementModule {}
