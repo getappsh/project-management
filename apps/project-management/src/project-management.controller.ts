@@ -4,7 +4,7 @@ import { MessagePattern } from '@nestjs/microservices';
 import { ProjectManagementService } from './project-management.service';
 import { DeviceResDto } from '../../../libs/common/src/dto/project-management/dto/device-res.dto';
 import {
-  EditProjectMemberDto, CreateProjectDto, AddMemberToProjectDto, 
+  EditProjectMemberDto, CreateProjectDto, AddMemberToProjectDto,
   ProjectTokenDto, MemberResDto, MemberProjectsResDto,
   CreateRegulationDto,
   UpdateRegulationDto,
@@ -31,7 +31,7 @@ export class ProjectManagementController {
 
   @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
   @MessagePattern(ProjectManagementTopics.ADD_PROJECT_NEW_MEMBER)
-  addMemberToProject(@RpcPayload() projectMember: AddMemberToProjectDto ) {
+  addMemberToProject(@RpcPayload() projectMember: AddMemberToProjectDto) {
     return this.projectManagementService.addMemberToProject(projectMember);
   }
 
@@ -39,6 +39,11 @@ export class ProjectManagementController {
   @MessagePattern(ProjectManagementTopics.REMOVE_PROJECT_MEMBER)
   removeMemberFromProject(@RpcPayload() params: ProjectMemberParams, @AuthUser("email") authEmail: string) {
     return this.projectManagementService.removeMemberFromProject(params, authEmail);
+  }
+
+  @MessagePattern(ProjectManagementTopics.CONFIRM_PROJECT_MEMBER)
+  confirmMemberInProject(@RpcPayload("stringValue") projectId: number, @AuthUser("email") authEmail: string) {
+    return this.projectManagementService.confirmMemberInProject(projectId, authEmail);
   }
 
   @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
@@ -54,7 +59,7 @@ export class ProjectManagementController {
 
   @MemberInProject()
   @MessagePattern(ProjectManagementTopics.CREATE_PROJECT_TOKEN)
-  createToken(@RpcPayload("projectId")  projectId: number): Promise<ProjectTokenDto> {
+  createToken(@RpcPayload("projectId") projectId: number): Promise<ProjectTokenDto> {
     return this.projectManagementService.createToken(projectId);
   }
 
@@ -69,7 +74,7 @@ export class ProjectManagementController {
     return this.projectManagementService.getDevicesByCatalogId(catalogId);
   }
   @MessagePattern(ProjectManagementTopics.GET_DEVICES_BY_PROJECT)
-  getDevicesByProject(@RpcPayload()projectId: number): Promise<DeviceResDto[]> {
+  getDevicesByProject(@RpcPayload() projectId: number): Promise<DeviceResDto[]> {
     return this.projectManagementService.getDevicesByProject(projectId);
   }
   @MessagePattern(ProjectManagementTopics.GET_DEVICES_BY_PLATFORM)
@@ -78,53 +83,52 @@ export class ProjectManagementController {
   }
 
   @MessagePattern(ProjectManagementTopics.GET_REGULATION_TYPES)
-  getRegulationTypes(){
+  getRegulationTypes() {
     return this.projectManagementService.getRegulationTypes()
   }
 
   @MemberInProject()
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_REGULATIONS)
-  getProjectRegulations(@RpcPayload('projectId') projectId: number){
+  getProjectRegulations(@RpcPayload('projectId') projectId: number) {
     return this.projectManagementService.getProjectRegulations(projectId)
   }
 
-  
   @MemberInProject()
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_REGULATION_BY_ID)
-  getRegulationById(@RpcPayload() params: RegulationParams){
+  getRegulationById(@RpcPayload() params: RegulationParams) {
     return this.projectManagementService.getRegulationById(params)
   }
 
   @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
   @MessagePattern(ProjectManagementTopics.CREATE_PROJECT_REGULATION)
-  createRegulation(@RpcPayload() regulation: CreateRegulationDto){
+  createRegulation(@RpcPayload() regulation: CreateRegulationDto) {
     return this.projectManagementService.createRegulation(regulation)
   }
 
   @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
   @MessagePattern(ProjectManagementTopics.UPDATE_PROJECT_REGULATION)
-  updateRegulation(@RpcPayload() regulation: UpdateRegulationDto){
+  updateRegulation(@RpcPayload() regulation: UpdateRegulationDto) {
     return this.projectManagementService.updateRegulation(regulation)
   }
 
   @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
   @MessagePattern(ProjectManagementTopics.DELETE_PROJECT_REGULATION)
-  deleteRegulation(@RpcPayload() params: RegulationParams){
+  deleteRegulation(@RpcPayload() params: RegulationParams) {
     return this.projectManagementService.deleteRegulation(params)
   }
 
   @MessagePattern(ProjectManagementTopics.CHECK_HEALTH)
-  healthCheckSuccess(){
+  healthCheckSuccess() {
     const version = this.readImageVersion()
     this.logger.log(`Device service - Health checking, Version: ${version}`)
     return "Project-Management is running successfully. Version: " + version
   }
 
-  private readImageVersion(){
+  private readImageVersion() {
     let version = 'unknown'
-    try{
-      version = fs.readFileSync('NEW_TAG.txt','utf8');
-    }catch(error){
+    try {
+      version = fs.readFileSync('NEW_TAG.txt', 'utf8');
+    } catch (error) {
       this.logger.error(`Unable to read image version - error: ${error}`)
     }
     return version

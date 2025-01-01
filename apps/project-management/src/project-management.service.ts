@@ -47,13 +47,17 @@ export class ProjectManagementService {
   private async getOrCreateMember(email: string, invite?: boolean): Promise<MemberEntity> {
 
     try {
-      let member = await this.getMemberByEmail(email);
-      if (!member) {
-        this.logger.debug("User is not exist, create him.");
-        member = new MemberEntity()
-        member.email = email;
+      let member = await this.getMemberByEmail(email).catch(error => {
+        this.logger.debug(`Member with email ${email} not found, creating new member`);
+      });
+      if (!member || !member.firstName || !member.lastName) {
+        if (!member) {
+          member = new MemberEntity()
+          member.email = email;
+        }
 
         const user = await this.oidcService.getUsers({ email: email, exact: true });
+
         if (user && user[0]) {
           member.firstName = user[0].firstName;
           member.lastName = user[0].lastName;
@@ -133,10 +137,24 @@ export class ProjectManagementService {
     return new ProjectDto().fromProjectEntity(project)
   }
 
+  async confirmMemberInProject(projectId: number, email: string) {
+    this.logger.debug(`Confirm member in project with email: ${email} and projectId: ${projectId}`)
+    const member = await this.getOrCreateMember(email, false);
+    const memberProject = await this.getMemberInProjectByEmail(projectId, member.email);
+    if (!memberProject) {
+      throw new NotFoundException(`Member with email ${email} not found in project with id ${projectId}`);
+    }
+
+    memberProject.status = MemberProjectStatusEnum.ACTIVE;
+    await this.memberProjectRepo.save(memberProject);
+
+    return await this.getProject(projectId);
+  }
+
   async addMemberToProject(projectMember: AddMemberToProjectDto): Promise<MemberProjectResDto> {
     this.logger.debug(`Add member to project: ${projectMember.email}`)
 
-    let member = await this.getOrCreateMember(projectMember.email).catch(error => {
+    let member = await this.getOrCreateMember(projectMember.email, true).catch(error => {
       this.logger.error(`Failed to add member ${projectMember.email} to project ${projectMember.projectId}, Err: ${error}`);
     });
 
@@ -305,11 +323,11 @@ export class ProjectManagementService {
       delete groupedResult.projects[id];
       return pro
     })
-    
+
     groupedResult.inactiveProjects.map((id: number) => {
       delete groupedResult.projects[id];
     })
-    
+
     mbProjectsRes.projects = Object.values(groupedResult.projects);
 
     return mbProjectsRes;
