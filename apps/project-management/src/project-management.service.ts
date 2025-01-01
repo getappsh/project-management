@@ -1,18 +1,13 @@
-import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, RegulationEntity, RegulationTypeEntity, MemberProjectStatusEnum } from '@app/common/database/entities';
+import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum } from '@app/common/database/entities';
 import { ConflictException, HttpException, HttpStatus, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { AddMemberToProjectDto, EditProjectMemberDto, ProjectMemberParams } from '@app/common/dto/project-management/dto/project-member.dto';
 import {
   DeviceResDto, ProjectReleasesDto, ProjectTokenDto,
   MemberProjectResDto, MemberProjectsResDto, MemberResDto, ProjectDto,
-  CreateProjectDto,
-  RegulationTypeDto,
-  RegulationDto,
-  CreateRegulationDto,
-  UpdateRegulationDto,
-  RegulationParams
+  CreateProjectDto
 } from '@app/common/dto/project-management';
 import { OidcService } from '@app/common/oidc/oidc.interface';
 
@@ -23,13 +18,12 @@ export class ProjectManagementService {
   private readonly logger = new Logger(ProjectManagementService.name);
   constructor(
     private readonly jwtService: JwtService,
-    @InjectRepository(UploadVersionEntity) private readonly uploadVersionEntity: Repository<UploadVersionEntity>,
+    @InjectRepository(UploadVersionEntity) private readonly uploadVersionRepo: Repository<UploadVersionEntity>,
     @InjectRepository(MemberProjectEntity) private readonly memberProjectRepo: Repository<MemberProjectEntity>,
     @InjectRepository(MemberEntity) private readonly memberRepo: Repository<MemberEntity>,
     @InjectRepository(ProjectEntity) private readonly projectRepo: Repository<ProjectEntity>,
     @InjectRepository(DeviceEntity) private readonly deviceRepo: Repository<DeviceEntity>,
-    @InjectRepository(RegulationEntity) private readonly regulationRepo: Repository<RegulationEntity>,
-    @InjectRepository(RegulationTypeEntity) private readonly regulationTypeRepo: Repository<RegulationTypeEntity>,
+
     @Inject("OidcProviderService") private readonly oidcService: OidcService
   ) { }
 
@@ -78,32 +72,6 @@ export class ProjectManagementService {
     }
   }
 
-  // TODO use guard to verify user is a project-admin instead of this method
-  private async isProjectAdmin(email: string, projectId: number) {
-    const memberProject = await this.memberProjectRepo
-      .findOne({
-        relations: ['project', 'member'],
-        where: {
-          project: {
-            id: projectId
-          },
-          member: {
-            email: email
-          },
-          role: In([RoleInProject.PROJECT_ADMIN, RoleInProject.PROJECT_OWNER])
-        }
-      })
-
-    if (!memberProject) {
-      const errorMes = `Project: ${projectId} doesn't exist or User: ${email} is Not allowed to add members to this Project`
-      this.logger.debug(errorMes)
-      throw new HttpException(errorMes, HttpStatus.FORBIDDEN);
-
-    }
-    this.logger.debug(memberProject);
-
-    return memberProject
-  }
 
   async createProject(projectDto: CreateProjectDto) {
     this.logger.debug(`Create project: ${projectDto.name}`)
@@ -346,7 +314,7 @@ export class ProjectManagementService {
   }
 
   async getDevicesByProject(projectId: number): Promise<DeviceResDto[]> {
-    const comps = await this.uploadVersionEntity.find({
+    const comps = await this.uploadVersionRepo.find({
       select: ['catalogId'],
       where: {
         project: {
@@ -401,7 +369,7 @@ export class ProjectManagementService {
 
   async getProjectReleases(projectId: number): Promise<ProjectReleasesDto[]> {
     this.logger.log(`Get all releases for project with id ${projectId}`);
-    let uploadVersions = await this.uploadVersionEntity.find({
+    let uploadVersions = await this.uploadVersionRepo.find({
       where: {
         project: { id: projectId }
       }
@@ -413,91 +381,4 @@ export class ProjectManagementService {
 
     return projectReleases
   }
-
-
-  getRegulationTypes(): Promise<RegulationTypeDto[]> {
-    this.logger.log('Get all regulation types');
-    return this.regulationTypeRepo.find();
-  }
-
-  async getProjectRegulations(projectId: number): Promise<RegulationDto[]> {
-    this.logger.log(`Get all regulations for project with id ${projectId}`);
-    return this.regulationRepo.find({
-      where: {
-        project: { id: projectId }
-      },
-      relations: { project: true },
-      select: { project: { id: true } },
-      order: { order: 'ASC' }
-    }).then(regulation => regulation.map(r => new RegulationDto().fromRegulationEntity(r)));
-  }
-
-  async createRegulation(regulation: CreateRegulationDto): Promise<RegulationDto> {
-    this.logger.log('Create regulation');
-
-    const regulationType = await this.regulationTypeRepo.findOne({ where: { id: regulation.typeId } });
-    if (!regulationType) {
-      throw new NotFoundException(`Regulation type with id ${regulation.typeId} not found`);
-    }
-
-    const project = await this.projectRepo.findOne({ where: { id: regulation.projectId } });
-    if (!project) {
-      throw new NotFoundException(`Project with id ${regulation.projectId} not found`);
-    }
-
-    const newRegulation = new RegulationEntity();
-    newRegulation.name = regulation.name;
-    newRegulation.description = regulation.description;
-    newRegulation.config = regulation.config;
-    newRegulation.order = regulation.order;
-    newRegulation.type = regulationType;
-    newRegulation.project = project;
-
-    return this.regulationRepo.save(newRegulation).then(r => new RegulationDto().fromRegulationEntity(r));
-  }
-
-  async updateRegulation(regulation: UpdateRegulationDto): Promise<RegulationDto> {
-    this.logger.log('Update regulation');
-
-    const currentRegulation = await this.regulationRepo.findOne({ where: { id: regulation.regulationId, project: { id: regulation.projectId } } });
-    if (!currentRegulation) {
-      throw new NotFoundException(`Regulation with ID ${regulation.regulationId} for Project ID ${regulation.projectId} not found`);
-    }
-
-    const regulationEntity = new RegulationEntity();
-    regulationEntity.name = regulation?.name;
-    regulationEntity.description = regulation?.description;
-    regulationEntity.config = regulation?.config;
-    regulationEntity.order = regulation?.order;
-    if (regulation?.typeId) {
-      const regulationType = await this.regulationTypeRepo.findOne({ where: { id: regulation.typeId } });
-      if (!regulationType) {
-        throw new NotFoundException(`Regulation type with id ${regulation.typeId} not found`);
-      }
-      regulationEntity.type = regulationType;
-    }
-
-    return this.regulationRepo.save({ ...currentRegulation, ...regulationEntity }).then(r => new RegulationDto().fromRegulationEntity(r));
-  }
-
-
-  async getRegulationById(params: RegulationParams): Promise<RegulationDto> {
-    this.logger.log('Get regulation by id');
-    const regulation = await this.regulationRepo.findOne({ where: { id: params.regulationId, project: { id: params.projectId } }, relations: { project: true }, select: { project: { id: true } } });
-    if (!regulation) {
-      throw new NotFoundException(`Regulation with ID ${params.regulationId} for Project ID ${params.projectId} not found`);
-    }
-    return new RegulationDto().fromRegulationEntity(regulation);
-  }
-
-  async deleteRegulation(params: RegulationParams): Promise<string> {
-    this.logger.log('Delete regulation');
-
-    let { raw, affected } = await this.regulationRepo.delete({ id: params.regulationId, project: { id: params.projectId } });
-    if (affected == 0) {
-      throw new NotFoundException(`Regulation with ID ${params.regulationId} for Project ID ${params.projectId} not found`);
-    }
-    return 'Regulation deleted';
-  }
-
 }

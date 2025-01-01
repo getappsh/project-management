@@ -14,8 +14,9 @@ export class SeederService {
     async seedRegulationTypes() {
         this.logger.log('Seeding regulation types...');
         const defaultTypes = [
-            { name: 'Boolean', description: 'A regulation that expects a true/false result' },
+            { name: 'Boolean', description: 'A regulation that expects a boolean value, valid values: true' },
             { name: 'Threshold', description: 'A regulation that expects a value to meet a threshold' },
+            { name: 'JUnit', description: 'A regulation that validates JUnit XML test results, valid value is threshold for pass percentage' },
         ];
 
         for (const type of defaultTypes) {

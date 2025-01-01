@@ -2,26 +2,34 @@ import { ProjectManagementTopics } from '@app/common/microservice-client/topics'
 import { Controller, Logger } from '@nestjs/common';
 import { MessagePattern } from '@nestjs/microservices';
 import { ProjectManagementService } from './project-management.service';
-import { DeviceResDto } from '../../../libs/common/src/dto/project-management/dto/device-res.dto';
+import { DeviceResDto } from '@app/common/dto/project-management/dto/device-res.dto';
 import {
   EditProjectMemberDto, CreateProjectDto, AddMemberToProjectDto,
   ProjectTokenDto, MemberResDto, MemberProjectsResDto,
   CreateRegulationDto,
   UpdateRegulationDto,
   RegulationParams,
-  ProjectMemberParams
+  ProjectMemberParams,
+  SetRegulationStatusDto,
+  SetRegulationCompliancyDto,
+  RegulationStatusParams,
+  VersionRegulationStatusParams
 } from '@app/common/dto/project-management';
 import { RpcPayload } from '@app/common/microservice-client';
 import * as fs from 'fs';
 import { AuthUser } from './utils/auth-user.decorator';
 import { MemberInProject } from './decorators/member-in-project.decorator';
 import { RoleInProject } from '@app/common/database/entities';
+import { RegulationService } from './regulation.service';
 
 @Controller()
 export class ProjectManagementController {
   private readonly logger = new Logger(ProjectManagementController.name);
 
-  constructor(private readonly projectManagementService: ProjectManagementService) { }
+  constructor(
+    private readonly projectManagementService: ProjectManagementService,
+    private readonly regulationService: RegulationService
+  ) { }
 
 
   @MessagePattern(ProjectManagementTopics.CREATE_PROJECT)
@@ -82,40 +90,74 @@ export class ProjectManagementController {
     return this.projectManagementService.getDevicesByPlatform(platform);
   }
 
+  // regulations
+
   @MessagePattern(ProjectManagementTopics.GET_REGULATION_TYPES)
-  getRegulationTypes() {
-    return this.projectManagementService.getRegulationTypes()
+  getRegulationTypes(){
+    return this.regulationService.getRegulationTypes()
   }
 
   @MemberInProject()
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_REGULATIONS)
-  getProjectRegulations(@RpcPayload('projectId') projectId: number) {
-    return this.projectManagementService.getProjectRegulations(projectId)
+  getProjectRegulations(@RpcPayload('projectId') projectId: number){
+    return this.regulationService.getProjectRegulations(projectId)
   }
 
   @MemberInProject()
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_REGULATION_BY_ID)
-  getRegulationById(@RpcPayload() params: RegulationParams) {
-    return this.projectManagementService.getRegulationById(params)
+  getRegulationById(@RpcPayload() params: RegulationParams){
+    return this.regulationService.getRegulationById(params)
   }
 
   @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
   @MessagePattern(ProjectManagementTopics.CREATE_PROJECT_REGULATION)
-  createRegulation(@RpcPayload() regulation: CreateRegulationDto) {
-    return this.projectManagementService.createRegulation(regulation)
+  createRegulation(@RpcPayload() regulation: CreateRegulationDto){
+    return this.regulationService.createRegulation(regulation)
   }
 
   @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
   @MessagePattern(ProjectManagementTopics.UPDATE_PROJECT_REGULATION)
-  updateRegulation(@RpcPayload() regulation: UpdateRegulationDto) {
-    return this.projectManagementService.updateRegulation(regulation)
+  updateRegulation(@RpcPayload() regulation: UpdateRegulationDto){
+    return this.regulationService.updateRegulation(regulation)
   }
 
   @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
   @MessagePattern(ProjectManagementTopics.DELETE_PROJECT_REGULATION)
-  deleteRegulation(@RpcPayload() params: RegulationParams) {
-    return this.projectManagementService.deleteRegulation(params)
+  deleteRegulation(@RpcPayload() params: RegulationParams){
+    return this.regulationService.deleteRegulation(params)
   }
+
+  @MemberInProject()
+  @MessagePattern(ProjectManagementTopics.SET_VERSION_REGULATION_STATUS)
+  setRegulationStatus(@RpcPayload() dto: SetRegulationStatusDto){
+    return this.regulationService.setRegulationStatus(dto)
+  }
+
+  @MemberInProject(RoleInProject.PROJECT_OWNER)
+  @MessagePattern(ProjectManagementTopics.SET_VERSION_REGULATION_COMPLIANCE)
+  setComplianceStatus(@RpcPayload() dto: SetRegulationCompliancyDto){
+    return this.regulationService.setComplianceStatus(dto)
+  }
+
+  @MemberInProject()
+  @MessagePattern(ProjectManagementTopics.GET_VERSION_REGULATION_STATUS_BY_ID)
+  getVersionRegulationStatus(@RpcPayload() params: RegulationStatusParams){
+    return this.regulationService.getVersionRegulationStatus(params)
+  }
+
+  @MemberInProject()
+  @MessagePattern(ProjectManagementTopics.GET_VERSION_REGULATIONS_STATUSES)
+  getVersionRegulationsStatuses(@RpcPayload() dto: VersionRegulationStatusParams){
+    return this.regulationService.getVersionRegulationsStatuses(dto)
+    
+  }
+
+  @MemberInProject()
+  @MessagePattern(ProjectManagementTopics.DELETE_VERSION_REGULATION_STATUS)
+  deleteVersionRegulationStatus(@RpcPayload() params: RegulationStatusParams){
+    return this.regulationService.deleteVersionRegulationStatus(params)
+  }
+  
 
   @MessagePattern(ProjectManagementTopics.CHECK_HEALTH)
   healthCheckSuccess() {

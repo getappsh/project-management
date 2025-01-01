@@ -1,5 +1,5 @@
 import { DatabaseModule, UploadJwtConfigService,  } from '@app/common';
-import { MemberEntity, ProjectEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity } from '@app/common/database/entities';
+import { MemberEntity, ProjectEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, RegulationStatusEntity } from '@app/common/database/entities';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -10,6 +10,9 @@ import { LoggerModule } from '@app/common/logger/logger.module';
 import { ApmModule } from '@app/common/apm/apm.module';
 import { OidcModule } from '@app/common/oidc/oidc.module';
 import { SeederService } from './utils/seeder.service';
+import { RegulationService } from './regulation.service';
+import { RegulationEnforcementService } from './regulation-enforcement.service';
+import { JUnitParserService } from './utils/junit-parser.service';
 
 
 @Module({
@@ -23,13 +26,13 @@ import { SeederService } from './utils/seeder.service';
     }),
     TypeOrmModule.forFeature([
       MemberEntity, ProjectEntity, MemberProjectEntity, UploadVersionEntity, 
-      RegulationEntity, RegulationTypeEntity,
+      RegulationEntity, RegulationTypeEntity, RegulationStatusEntity,
       DeviceEntity,
     ]),
     OidcModule.forRoot(),
   ],
   controllers: [ProjectManagementController],
-  providers: [ProjectManagementService, SeederService],
+  providers: [ProjectManagementService, RegulationService, SeederService, RegulationEnforcementService, JUnitParserService],
   exports: [SeederService],
 })
 export class ProjectManagementModule {}
