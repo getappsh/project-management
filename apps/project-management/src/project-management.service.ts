@@ -9,12 +9,12 @@ import {
   MemberProjectResDto, MemberProjectsResDto, MemberResDto, ProjectDto,
   CreateProjectDto
 } from '@app/common/dto/project-management';
-import { OidcService } from '@app/common/oidc/oidc.interface';
+import { OidcService, UserSearchDto } from '@app/common/oidc/oidc.interface';
 
 
 @Injectable()
 export class ProjectManagementService {
-
+  
   private readonly logger = new Logger(ProjectManagementService.name);
   constructor(
     private readonly jwtService: JwtService,
@@ -23,9 +23,12 @@ export class ProjectManagementService {
     @InjectRepository(MemberEntity) private readonly memberRepo: Repository<MemberEntity>,
     @InjectRepository(ProjectEntity) private readonly projectRepo: Repository<ProjectEntity>,
     @InjectRepository(DeviceEntity) private readonly deviceRepo: Repository<DeviceEntity>,
-
     @Inject("OidcProviderService") private readonly oidcService: OidcService
   ) { }
+  
+  async getUsers(params: UserSearchDto) {
+    return await this.oidcService.getUsers(params)
+  }
 
   getMemberInProjectByEmail(projectId: number, email: string) {
     this.logger.debug(`Get member in project with email: ${email} and projectId: ${projectId}`)

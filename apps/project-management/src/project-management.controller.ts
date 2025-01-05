@@ -21,6 +21,7 @@ import { AuthUser } from './utils/auth-user.decorator';
 import { MemberInProject } from './decorators/member-in-project.decorator';
 import { RoleInProject } from '@app/common/database/entities';
 import { RegulationService } from './regulation.service';
+import { UserSearchDto } from '@app/common/oidc/oidc.interface';
 
 @Controller()
 export class ProjectManagementController {
@@ -31,6 +32,10 @@ export class ProjectManagementController {
     private readonly regulationService: RegulationService
   ) { }
 
+  @MessagePattern(ProjectManagementTopics.GET_USERS)
+  getAllUsers(@RpcPayload() params: UserSearchDto) {
+    return this.projectManagementService.getUsers(params);
+  }
 
   @MessagePattern(ProjectManagementTopics.CREATE_PROJECT)
   createProject(@RpcPayload() project: CreateProjectDto) {
@@ -93,71 +98,71 @@ export class ProjectManagementController {
   // regulations
 
   @MessagePattern(ProjectManagementTopics.GET_REGULATION_TYPES)
-  getRegulationTypes(){
+  getRegulationTypes() {
     return this.regulationService.getRegulationTypes()
   }
 
   @MemberInProject()
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_REGULATIONS)
-  getProjectRegulations(@RpcPayload('projectId') projectId: number){
+  getProjectRegulations(@RpcPayload('projectId') projectId: number) {
     return this.regulationService.getProjectRegulations(projectId)
   }
 
   @MemberInProject()
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_REGULATION_BY_ID)
-  getRegulationById(@RpcPayload() params: RegulationParams){
+  getRegulationById(@RpcPayload() params: RegulationParams) {
     return this.regulationService.getRegulationById(params)
   }
 
   @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
   @MessagePattern(ProjectManagementTopics.CREATE_PROJECT_REGULATION)
-  createRegulation(@RpcPayload() regulation: CreateRegulationDto){
+  createRegulation(@RpcPayload() regulation: CreateRegulationDto) {
     return this.regulationService.createRegulation(regulation)
   }
 
   @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
   @MessagePattern(ProjectManagementTopics.UPDATE_PROJECT_REGULATION)
-  updateRegulation(@RpcPayload() regulation: UpdateRegulationDto){
+  updateRegulation(@RpcPayload() regulation: UpdateRegulationDto) {
     return this.regulationService.updateRegulation(regulation)
   }
 
   @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
   @MessagePattern(ProjectManagementTopics.DELETE_PROJECT_REGULATION)
-  deleteRegulation(@RpcPayload() params: RegulationParams){
+  deleteRegulation(@RpcPayload() params: RegulationParams) {
     return this.regulationService.deleteRegulation(params)
   }
 
   @MemberInProject()
   @MessagePattern(ProjectManagementTopics.SET_VERSION_REGULATION_STATUS)
-  setRegulationStatus(@RpcPayload() dto: SetRegulationStatusDto){
+  setRegulationStatus(@RpcPayload() dto: SetRegulationStatusDto) {
     return this.regulationService.setRegulationStatus(dto)
   }
 
   @MemberInProject(RoleInProject.PROJECT_OWNER)
   @MessagePattern(ProjectManagementTopics.SET_VERSION_REGULATION_COMPLIANCE)
-  setComplianceStatus(@RpcPayload() dto: SetRegulationCompliancyDto){
+  setComplianceStatus(@RpcPayload() dto: SetRegulationCompliancyDto) {
     return this.regulationService.setComplianceStatus(dto)
   }
 
   @MemberInProject()
   @MessagePattern(ProjectManagementTopics.GET_VERSION_REGULATION_STATUS_BY_ID)
-  getVersionRegulationStatus(@RpcPayload() params: RegulationStatusParams){
+  getVersionRegulationStatus(@RpcPayload() params: RegulationStatusParams) {
     return this.regulationService.getVersionRegulationStatus(params)
   }
 
   @MemberInProject()
   @MessagePattern(ProjectManagementTopics.GET_VERSION_REGULATIONS_STATUSES)
-  getVersionRegulationsStatuses(@RpcPayload() dto: VersionRegulationStatusParams){
+  getVersionRegulationsStatuses(@RpcPayload() dto: VersionRegulationStatusParams) {
     return this.regulationService.getVersionRegulationsStatuses(dto)
-    
+
   }
 
   @MemberInProject()
   @MessagePattern(ProjectManagementTopics.DELETE_VERSION_REGULATION_STATUS)
-  deleteVersionRegulationStatus(@RpcPayload() params: RegulationStatusParams){
+  deleteVersionRegulationStatus(@RpcPayload() params: RegulationStatusParams) {
     return this.regulationService.deleteVersionRegulationStatus(params)
   }
-  
+
 
   @MessagePattern(ProjectManagementTopics.CHECK_HEALTH)
   healthCheckSuccess() {

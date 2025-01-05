@@ -47,7 +47,7 @@ export class KcService implements OidcService {
 
   }
 
-  async getUsers(params?: UserSearchDto): Promise<UserDto[]> {
+  async getUsers(params?: UserSearchDto, limit?:number): Promise<UserDto[]> {
     this.logger.log('get all users');
 
     await this.authenticate();
@@ -65,7 +65,7 @@ export class KcService implements OidcService {
       'Authorization': 'Bearer ' + this.accessToken
     }
 
-    const res = await this.httpService.axiosRef.get(this.BASE_URL + relativeUrl + "?" + query, { headers: headers }).catch(err => {
+    const res = await this.httpService.axiosRef.get(this.BASE_URL + relativeUrl + "?" + query + `&max=${limit ?? 10}`, { headers: headers }).catch(err => {
       this.logger.error("Get user from kc failed", err);
       throw err;
     })
