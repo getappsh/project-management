@@ -1,4 +1,4 @@
-import { Column, Entity, ManyToOne, PrimaryGeneratedColumn, Unique } from "typeorm";
+import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique } from "typeorm";
 import { RegulationEntity } from "./regulation.entity";
 import { UploadVersionEntity } from "./upload-version.entity";
 
@@ -9,17 +9,19 @@ export class RegulationStatusEntity {
     id: number;
     
     @ManyToOne(() => UploadVersionEntity, (version) => version)
+    @JoinColumn({name: "version_id"})
     version: UploadVersionEntity
 
     @ManyToOne(() => RegulationEntity, (regulation) => regulation)
+    @JoinColumn({name: "regulation_id"})
     regulation: RegulationEntity;
 
-    @Column({default: false})
+    @Column({name: "is_compliant", default: false})
     isCompliant: boolean;
 
-    @Column({ default: null })
+    @Column({ name: "value", default: null })
     value: string;
 
-    @Column({ default: null })
+    @Column({ name: "report_details", default: null })
     reportDetails: string;
 }
