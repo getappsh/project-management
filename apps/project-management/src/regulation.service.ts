@@ -1,9 +1,8 @@
-import { RegulationEntity, RegulationTypeEntity, RegulationStatusEntity, UploadVersionEntity, ProjectEntity } from "@app/common/database/entities";
-import { CreateRegulationDto, RegulationDto, RegulationParams, RegulationStatusDto, RegulationStatusParams, RegulationTypeDto, SetRegulationCompliancyDto, SetRegulationStatusDto, UpdateRegulationDto, VersionRegulationStatusParams } from "@app/common/dto/project-management";
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { RegulationEntity, RegulationTypeEntity, UploadVersionEntity, ProjectEntity } from "@app/common/database/entities";
+import { CreateRegulationDto, RegulationDto, RegulationParams, RegulationTypeDto, UpdateRegulationDto } from "@app/common/dto/project-management";
+import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import { RegulationEnforcementService } from "./regulation-enforcement.service";
 
 @Injectable()
 export class RegulationService {
@@ -12,10 +11,8 @@ export class RegulationService {
   constructor(
     @InjectRepository(RegulationEntity) private readonly regulationRepo: Repository<RegulationEntity>,
     @InjectRepository(RegulationTypeEntity) private readonly regulationTypeRepo: Repository<RegulationTypeEntity>,
-    @InjectRepository(RegulationStatusEntity) private readonly regulationStatusRepo: Repository<RegulationStatusEntity>,
     @InjectRepository(UploadVersionEntity) private readonly uploadVersionRepo: Repository<UploadVersionEntity>,
     @InjectRepository(ProjectEntity) private readonly projectRepo: Repository<ProjectEntity>,
-    private readonly enforcementService: RegulationEnforcementService
   ) { }
 
 
@@ -60,7 +57,7 @@ export class RegulationService {
     newRegulation.type = regulationType;
     newRegulation.project = project;
 
-    this.enforcementService.validateConfig(newRegulation);
+    this.validateConfig(newRegulation);
     return this.regulationRepo.save(newRegulation).then(r => new RegulationDto().fromRegulationEntity(r));
   }
 
@@ -87,7 +84,7 @@ export class RegulationService {
 
     const updatedRegulation = { ...currentRegulation, ...regulationEntity };
 
-    this.enforcementService.validateConfig(updatedRegulation);
+    this.validateConfig(updatedRegulation);
     return this.regulationRepo.save(updatedRegulation).then(r => new RegulationDto().fromRegulationEntity(r));
   }
 
@@ -112,122 +109,20 @@ export class RegulationService {
   }
 
 
-  private async getRegulationAndVersion(regulationId: number, versionId: string, projectId: number): Promise<{regulation: RegulationEntity, version: UploadVersionEntity}> {
-    this.logger.debug(`Get regulation and version by regulationId: ${regulationId} and versionId: ${versionId}`);
-    const [regulation, version] = await Promise.all([
-      this.regulationRepo.findOne({where: {id: regulationId, project: {id: projectId}}}),
-      this.uploadVersionRepo.findOne({ where: { catalogId: versionId, project: { id: projectId } } })
-    ]);
-    if (!version) {
-      throw new NotFoundException(`Version with ID ${versionId} not found`);
+
+
+  private validateConfig(regulation: RegulationEntity) {
+    switch (regulation.type.name) {
+      case 'Boolean':
+        regulation.config = undefined;
+        break;
+      case 'Threshold':
+      case 'JUnit':
+        const configValue = Number(regulation.config);
+        if (isNaN(configValue)) {
+            throw new BadRequestException('Config value for Threshold type must be a number');
+        }
+        break
     }
-    if (!regulation) {
-      throw new NotFoundException(`Regulation with ID ${regulationId} for Project ID ${projectId} not found`);
-    }
-
-    return {regulation, version};
-  }
-  
-
-  async setRegulationStatus(dto: SetRegulationStatusDto): Promise<RegulationStatusDto> {
-    this.logger.log('Set regulation status');
-
-    const {regulation, version} = await this.getRegulationAndVersion(dto.regulationId, dto.versionId, dto.projectId);
-
-    const isCompliant = await this.enforcementService.enforce(regulation, dto.value);
-
-    await this.regulationStatusRepo
-      .createQueryBuilder()
-      .insert()
-      .values({
-        value: dto.value,
-        reportDetails: dto.reportDetails,
-        isCompliant: isCompliant,
-        version: version,
-        regulation: regulation
-      })
-      .orUpdate(
-        ['value', 'reportDetails', 'isCompliant'],
-        "regulation_version_unique_constraint",
-       )
-      .execute();
-          
-    return this.getVersionRegulationStatus(dto as RegulationStatusParams);
-  }
-
-
-  async setComplianceStatus(dto: SetRegulationCompliancyDto): Promise<RegulationStatusDto> {
-    this.logger.log('Set compliance status');
-    const {regulation, version} = await this.getRegulationAndVersion(dto.regulationId, dto.versionId, dto.projectId);
-    await this.regulationStatusRepo
-      .createQueryBuilder()
-      .insert()
-      .values({
-        isCompliant: dto.isCompliant,
-        version: version,
-        regulation: regulation
-      })
-      .orUpdate(
-        ['isCompliant'],
-        "regulation_version_unique_constraint",
-      )
-      .execute();
-    
-
-    return this.getVersionRegulationStatus(dto as RegulationStatusParams);
-  }
-
-  async getVersionRegulationStatus(params: RegulationStatusParams): Promise<RegulationStatusDto> {
-    this.logger.debug('Get regulation status');
-    const regulationStatus = await this.regulationStatusRepo.findOne({ 
-      select: {version: {catalogId: true}, regulation: {id: true, project: {id: true}}},
-      relations: {version: true, regulation: {project: true}},
-      where: { 
-        version: {catalogId: params.versionId},
-        regulation: { 
-          id: params.regulationId, 
-          project: {id: params.projectId} 
-        }, 
-      },
-    });
-
-    if (!regulationStatus) {
-      throw new NotFoundException(`Regulation status with regulationId ${params.regulationId} for Project ID ${params.projectId} not found`);
-    }
-    return new RegulationStatusDto().fromRegulationStatusEntity(regulationStatus);
-  }
-
-  async getVersionRegulationsStatuses(params: VersionRegulationStatusParams): Promise<RegulationStatusDto[]> {
-    this.logger.log(`Get regulation statuses for project id ${params.projectId} and version id ${params.versionId}`);
-
-    const regulationStatuses = await this.regulationStatusRepo.find({ 
-      select: {version: {catalogId: true}, regulation: {id: true, project: {id: true}}},
-      relations: {version: true, regulation: {project: true}},
-      where: { 
-        version: {catalogId: params.versionId},
-        regulation: { 
-          project: {id: params.projectId} }, 
-        },
-      order: {regulation: {order: 'ASC'}} 
-      });
-
-    this.logger.debug(`Regulations status found: ${regulationStatuses.length}`);
-    return regulationStatuses.map(rs => new RegulationStatusDto().fromRegulationStatusEntity(rs));
-  }
-
-
-  async deleteVersionRegulationStatus(params: RegulationStatusParams) {
-    this.logger.log(`Delete regulation status with regulationId ${params.regulationId} for Project ID ${params.projectId} and versionId ${params.versionId}`);
-
-    let { raw, affected } = await this.regulationStatusRepo.delete({
-      regulation: { id: params.regulationId },
-      version: { catalogId: params.versionId }
-    });
-    this.logger.debug(`Regulation status deleted: ${raw}, affected: ${affected}`);
-
-    if (affected == 0) {
-      throw new NotFoundException(`Regulation status with regulationId ${params.regulationId} for Project ID ${params.projectId} and versionId ${params.versionId} not found`);
-    }
-    return "Regulation status deleted";
   }
 }

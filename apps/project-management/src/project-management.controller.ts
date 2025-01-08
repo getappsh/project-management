@@ -10,10 +10,6 @@ import {
   UpdateRegulationDto,
   RegulationParams,
   ProjectMemberParams,
-  SetRegulationStatusDto,
-  SetRegulationCompliancyDto,
-  RegulationStatusParams,
-  VersionRegulationStatusParams
 } from '@app/common/dto/project-management';
 import { RpcPayload } from '@app/common/microservice-client';
 import * as fs from 'fs';
@@ -131,38 +127,6 @@ export class ProjectManagementController {
   deleteRegulation(@RpcPayload() params: RegulationParams) {
     return this.regulationService.deleteRegulation(params)
   }
-
-  @MemberInProject()
-  @MessagePattern(ProjectManagementTopics.SET_VERSION_REGULATION_STATUS)
-  setRegulationStatus(@RpcPayload() dto: SetRegulationStatusDto) {
-    return this.regulationService.setRegulationStatus(dto)
-  }
-
-  @MemberInProject(RoleInProject.PROJECT_OWNER)
-  @MessagePattern(ProjectManagementTopics.SET_VERSION_REGULATION_COMPLIANCE)
-  setComplianceStatus(@RpcPayload() dto: SetRegulationCompliancyDto) {
-    return this.regulationService.setComplianceStatus(dto)
-  }
-
-  @MemberInProject()
-  @MessagePattern(ProjectManagementTopics.GET_VERSION_REGULATION_STATUS_BY_ID)
-  getVersionRegulationStatus(@RpcPayload() params: RegulationStatusParams) {
-    return this.regulationService.getVersionRegulationStatus(params)
-  }
-
-  @MemberInProject()
-  @MessagePattern(ProjectManagementTopics.GET_VERSION_REGULATIONS_STATUSES)
-  getVersionRegulationsStatuses(@RpcPayload() dto: VersionRegulationStatusParams) {
-    return this.regulationService.getVersionRegulationsStatuses(dto)
-
-  }
-
-  @MemberInProject()
-  @MessagePattern(ProjectManagementTopics.DELETE_VERSION_REGULATION_STATUS)
-  deleteVersionRegulationStatus(@RpcPayload() params: RegulationStatusParams) {
-    return this.regulationService.deleteVersionRegulationStatus(params)
-  }
-
 
   @MessagePattern(ProjectManagementTopics.CHECK_HEALTH)
   healthCheckSuccess() {
