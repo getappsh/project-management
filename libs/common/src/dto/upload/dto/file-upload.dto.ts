@@ -19,10 +19,13 @@ export class CreateFileUploadUrlDto{
 
 export class FileUploadUrlDto{
 
-  constructor(url: string, objectKey: string) {
+  constructor(id: number, url: string, objectKey: string) {
+    this.id = id
     this.url = url
     this.objectKey = objectKey
   }
+
+  id: number
 
   url: string
 

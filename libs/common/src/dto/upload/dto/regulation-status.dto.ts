@@ -13,13 +13,14 @@ export class RegulationStatusParams {
   @IsString()
   @IsNotEmpty()
   @Type(() => String)
-  versionId: string
+  version: string
 
 
   @ApiProperty({ description: 'ID of the regulation' })
-  @IsNumber()
-  @Type(() => Number)
-  regulationId: number
+  @IsString()
+  @IsNotEmpty()
+  @Type(() => String)
+  regulation: string
 }
 
 export class VersionRegulationStatusParams {
@@ -32,7 +33,7 @@ export class VersionRegulationStatusParams {
   @IsString()
   @IsNotEmpty()
   @Type(() => String)
-  versionId: string
+  version: string
 
 }
 
@@ -40,9 +41,9 @@ export class SetRegulationStatusDto{
 
   projectId: number
 
-  regulationId: number
+  regulation: string
 
-  versionId: string
+  version: string
 
   @ApiProperty({ description: 'Value of the regulation' })
   @IsString()
@@ -60,9 +61,9 @@ export class  SetRegulationCompliancyDto {
 
   projectId: number
 
-  regulationId: number
+  regulation: string
 
-  versionId: string
+  version: string
 
   @ApiProperty({ description: 'Compliancy of the regulation' })
   @IsBoolean()
@@ -78,18 +79,24 @@ export class RegulationStatusDto  extends RegulationStatusParams{
   @ApiProperty({ required: false,  description: 'Report Details of the regulation' })
   reportDetails?: string
 
-
   @ApiProperty({ description: 'Compliancy of the regulation' })
   isCompliant: boolean
 
+  @ApiProperty({ description: 'Creation date of the regulation status' })
+  createdAt: Date
+
+  @ApiProperty({ description: 'Update date of the regulation status' })
+  updatedAt: Date
 
   fromRegulationStatusEntity(regulationStatus: RegulationStatusEntity) {
     this.value = regulationStatus.value
     this.reportDetails = regulationStatus.reportDetails
     this.isCompliant = regulationStatus.isCompliant
-    this.versionId = regulationStatus?.version?.catalogId
-    this.regulationId = regulationStatus?.regulation?.id
+    this.version = regulationStatus?.version?.version
+    this.regulation = regulationStatus?.regulation?.name
     this.projectId = regulationStatus?.regulation?.project?.id
+    this.createdAt = regulationStatus.createdAt
+    this.updatedAt = regulationStatus.updatedAt
 
     return this
 

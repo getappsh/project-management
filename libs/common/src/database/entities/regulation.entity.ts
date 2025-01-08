@@ -1,15 +1,19 @@
-import { Column, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn } from "typeorm";
 import { RegulationTypeEntity } from "./regulation-type.entity";
 import { ProjectEntity } from "./project.entity";
 import { RegulationStatusEntity } from "./regulation-status.entity";
 
 @Entity('regulation')
+@Index(["project", "name"], { unique: true })
 export class RegulationEntity {
     @PrimaryGeneratedColumn()
     id: number;
 
     @Column({name: 'name'})
     name: string;
+
+    @Column({name: 'display_name', default: null})
+    displayName: string;
 
     @Column({name: 'description', default: null})
     description: string;

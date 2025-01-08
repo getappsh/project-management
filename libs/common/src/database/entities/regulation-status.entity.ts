@@ -1,18 +1,18 @@
-import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique } from "typeorm";
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from "typeorm";
 import { RegulationEntity } from "./regulation.entity";
-import { UploadVersionEntity } from "./upload-version.entity";
+import { ReleaseEntity } from "./release.entity";
 
 @Entity("regulation_status")
 @Unique("regulation_version_unique_constraint",['regulation', 'version'])
 export class RegulationStatusEntity {
     @PrimaryGeneratedColumn()
     id: number;
-    
-    @ManyToOne(() => UploadVersionEntity, (version) => version)
-    @JoinColumn({name: "version_id"})
-    version: UploadVersionEntity
 
-    @ManyToOne(() => RegulationEntity, (regulation) => regulation)
+    @ManyToOne(() => ReleaseEntity, (release) => release, {nullable: false})
+    @JoinColumn({name: "version_id"})
+    version: ReleaseEntity
+
+    @ManyToOne(() => RegulationEntity, (regulation) => regulation, {nullable: false})
     @JoinColumn({name: "regulation_id"})
     regulation: RegulationEntity;
 
@@ -24,4 +24,10 @@ export class RegulationStatusEntity {
 
     @Column({ name: "report_details", default: null })
     reportDetails: string;
+
+    @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+    createdAt: Date;
+    
+    @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+    updatedAt: Date;
 }

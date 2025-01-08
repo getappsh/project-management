@@ -3,6 +3,8 @@ import { RegulationEntity } from '@app/common/database/entities';
 import { RegulationTypeDto } from './regulation-type.dto';
 import { IsNotEmpty, IsString, IsOptional, IsNumber } from 'class-validator';
 import { Type } from 'class-transformer';
+import { IsValidStringFor } from '@app/common/validators';
+import { Pattern } from '@app/common/validators/regex.validator';
 
 export class RegulationDto {
     @ApiProperty({ description: 'ID of the regulation' })
@@ -10,6 +12,9 @@ export class RegulationDto {
 
     @ApiProperty({ description: 'Name of the regulation' })
     name: string;
+
+    @ApiProperty({ description: 'Display name of the regulation' })
+    displayName: string;
 
     @ApiProperty({ description: 'Description of the regulation' })
     description: string;
@@ -29,6 +34,7 @@ export class RegulationDto {
     fromRegulationEntity(regulation: RegulationEntity) {
         this.regulationId = regulation.id;
         this.name = regulation.name;
+        this.displayName = regulation?.displayName;
         this.description = regulation.description;
         this.type = regulation.type;
         this.projectId = regulation?.project?.id;
@@ -48,7 +54,12 @@ export class CreateRegulationDto {
     @ApiProperty({ description: 'Name of the regulation' })
     @IsNotEmpty()
     @IsString()
+    @IsValidStringFor(Pattern.SINGLE_WORD)
     name: string;
+
+    @ApiProperty({required: false, description: 'Display name of the regulation' })
+    @IsString()
+    displayName?: string;
 
     @ApiProperty({ description: 'Description of the regulation', required: false })
     @IsString()
@@ -81,7 +92,12 @@ export class UpdateRegulationDto {
     @ApiProperty({ description: 'Name of the regulation', required: false })
     @IsOptional()
     @IsString()
+    @IsValidStringFor(Pattern.SINGLE_WORD)
     name?: string;
+
+    @ApiProperty({required: false, description: 'Display name of the regulation' })
+    @IsString()
+    displayName?: string;
 
     @ApiProperty({ description: 'Description of the regulation', required: false })
     @IsOptional()

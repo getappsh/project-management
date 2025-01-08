@@ -36,14 +36,17 @@ export class MinioClientService implements OnApplicationBootstrap{
     return this.client.presignedPutObject(bucketName, objectKey, expression || this.uploadUrlExpire);
   }
 
+  deleteObjects(bucketName: string, objectsKey: string[] | string): Promise<void> {
+    const objects = Array.isArray(objectsKey) ? objectsKey : [objectsKey];
+    return this.client.removeObjects(bucketName, objects);
+  }
 
   generatePresignedDownloadUrl(bucketName: string, objectKey: string, expression?: number): Promise<string> {
     return this.client.presignedGetObject(bucketName, objectKey, expression || this.downloadUrlExpire);
   }
 
   getObject(bucketName: string, objectKey: string): Promise<stream.Readable> {
-    return this.client.getObject(bucketName, objectKey);
-    
+    return this.client.getObject(bucketName, objectKey);    
   }
   
   async getObjectStat(bucketName: string, objectKey: string): Promise<Minio.BucketItemStat | undefined> {
