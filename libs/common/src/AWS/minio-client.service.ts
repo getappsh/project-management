@@ -67,7 +67,11 @@ export class MinioClientService implements OnApplicationBootstrap{
 
   async onApplicationBootstrap() {
     const bucketName = this.configService.get('BUCKET_NAME');
-    const exists = await this.bucketExists(bucketName);
-    this.logger.debug(`Bucket "${bucketName}" exists: ${exists}`)
+    try{
+      const exists = await this.bucketExists(bucketName);
+      this.logger.debug(`Bucket "${bucketName}" exists: ${exists}`)
+    }catch(err){
+      this.logger.error(`Error checking bucket "${bucketName}": ${err}`)
+    }
   }
 }
