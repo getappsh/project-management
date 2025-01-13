@@ -1,6 +1,7 @@
 import { ArtifactTypeEnum, ReleaseArtifactEntity } from "@app/common/database/entities";
 import { ApiProperty } from "@nestjs/swagger";
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsBoolean } from "class-validator";
+import { Type } from "class-transformer";
+import { IsString, IsNotEmpty, IsOptional, IsEnum, IsBoolean, IsNumber, IsSemVer } from "class-validator";
 
 export class SetReleaseArtifactDto {
   projectId: number
@@ -81,4 +82,22 @@ export class ReleaseArtifactDto{
     return dto
     
   }
+}
+
+
+export class ReleaseArtifactParams {
+  @ApiProperty()
+  @IsNumber()
+  @Type(() => Number)
+  projectId: number
+
+  @ApiProperty()
+  @IsSemVer()
+  @Type(() => String)
+  version: string
+
+  @ApiProperty()
+  @IsNumber()
+  @Type(() => Number)
+  artifactId: number
 }
