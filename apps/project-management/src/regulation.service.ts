@@ -1,6 +1,6 @@
 import { RegulationEntity, RegulationTypeEntity, UploadVersionEntity, ProjectEntity } from "@app/common/database/entities";
 import { CreateRegulationDto, RegulationDto, RegulationParams, RegulationTypeDto, UpdateRegulationDto } from "@app/common/dto/project-management";
-import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 
@@ -54,11 +54,22 @@ export class RegulationService {
     newRegulation.description = regulation.description;
     newRegulation.config = regulation.config;
     newRegulation.order = regulation.order;
+    newRegulation.displayName = regulation.displayName;
     newRegulation.type = regulationType;
     newRegulation.project = project;
 
     this.validateConfig(newRegulation);
-    return this.regulationRepo.save(newRegulation).then(r => new RegulationDto().fromRegulationEntity(r));
+
+    try {
+      const result = await this.regulationRepo.save(newRegulation);
+      return new RegulationDto().fromRegulationEntity(result);
+    }catch (err) {
+      if (err.code == '23505') {
+        throw new ConflictException(`Regulation with name '${regulation.name}' already exists`);
+      }
+      throw err
+    }
+
   }
 
   async updateRegulation(regulation: UpdateRegulationDto): Promise<RegulationDto> {
@@ -74,6 +85,8 @@ export class RegulationService {
     regulationEntity.description = regulation?.description;
     regulationEntity.config = regulation?.config;
     regulationEntity.order = regulation?.order;
+    regulationEntity.displayName = regulation?.displayName;
+
     if (regulation?.typeId) {
       const regulationType = await this.regulationTypeRepo.findOne({ where: { id: regulation.typeId } });
       if (!regulationType) {
@@ -85,7 +98,16 @@ export class RegulationService {
     const updatedRegulation = { ...currentRegulation, ...regulationEntity };
 
     this.validateConfig(updatedRegulation);
-    return this.regulationRepo.save(updatedRegulation).then(r => new RegulationDto().fromRegulationEntity(r));
+    
+    try {
+      const result = await this.regulationRepo.save(updatedRegulation);
+      return new RegulationDto().fromRegulationEntity(result);
+    }catch (err) {
+      if (err.code == '23505') {
+        throw new ConflictException(`Regulation with name '${regulation.name}' already exists`);
+      }
+      throw err
+    }
   }
 
 
