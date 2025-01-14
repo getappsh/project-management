@@ -1,4 +1,4 @@
-import { MemberEntity, MemberProjectEntity, RoleInProject } from "@app/common/database/entities";
+import { MemberEntity, MemberProjectEntity, MemberProjectStatusEnum, RoleInProject } from "@app/common/database/entities";
 import { ApiProperty } from "@nestjs/swagger";
 import { ProjectDto } from "./project.dto";
 
@@ -19,17 +19,32 @@ export class MemberResDto {
   @ApiProperty({ enum: RoleInProject })
   role: string;
 
+  @ApiProperty({required: false, enum: MemberProjectStatusEnum})
+  status: MemberProjectStatusEnum
+
   @ApiProperty({required: false, default:-1})
   defaultProject: number;
 
-  fromMemberEntity(member: MemberEntity, role: string){
+  fromMemberEntity(member: MemberEntity, role: string, status?: MemberProjectStatusEnum) {
     this.id = member.id;
     this.email = member.email;
     this.firstName = member.firstName;
     this.lastName = member.lastName;
     this.role = role;
+    this.status = status;
 
     return this;
+  }
+
+  fromMemberProjectEntity(memberProject: MemberProjectEntity): this {
+    this.id = memberProject.member.id;
+    this.email = memberProject.member.email;
+    this.firstName = memberProject.member.firstName;
+    this.lastName = memberProject.member.lastName;
+    this.role = memberProject.role;
+    this.status = memberProject.status;
+
+    return this
   }
 
   toString(){

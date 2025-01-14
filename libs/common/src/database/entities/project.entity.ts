@@ -20,7 +20,7 @@ export class ProjectEntity extends BaseEntity{
     @OneToMany(() => RegulationEntity, regulation => regulation.project)
     regulations: RegulationEntity[]
     
-    @OneToMany(() => MemberProjectEntity, memberProject => memberProject)
+    @OneToMany(() => MemberProjectEntity, memberProject => memberProject.project)
     memberProject: MemberProjectEntity[];
 
     @OneToMany(() => ReleaseEntity, release => release.project)

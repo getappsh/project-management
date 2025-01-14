@@ -35,6 +35,10 @@ export class ProjectDto {
       this.regulation = project.regulations.map(regulation => new RegulationDto().fromRegulationEntity(regulation))
     }
 
+    if (project.memberProject){
+      this.members = project.memberProject.map(memberProject => new MemberResDto().fromMemberProjectEntity(memberProject))
+    }
+
     return this;
   }
 
