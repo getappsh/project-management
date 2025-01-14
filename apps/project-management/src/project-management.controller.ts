@@ -67,6 +67,7 @@ export class ProjectManagementController {
     return this.projectManagementService.getUserProjects(email);
   }
 
+  @MemberInProject()
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_BY_IDENTIFIER)
   getProject(@RpcPayload("projectIdentifier") projectIdentifier: number | string): Promise<ProjectDto> {
     return this.projectManagementService.getProject(projectIdentifier);
