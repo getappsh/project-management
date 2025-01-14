@@ -3,9 +3,12 @@ import { ApiProperty } from "@nestjs/swagger";
 import { IsNotEmpty, IsOptional, IsSemVer, IsString, IsBoolean, IsNumber} from "class-validator";
 import { ReleaseArtifactDto } from "./release-artifact.dto";
 import { Type } from "class-transformer";
+import { ProjectIdentifierParams } from "../../project-management";
 
 export class SetReleaseDto {
   
+  projectIdentifier: string | number
+
   projectId: number
   
   @ApiProperty()
@@ -85,19 +88,14 @@ export class ReleaseDto{
 }
 
 
-export class ReleaseParams {
-  @ApiProperty()
-  @IsNumber()
-  @Type(() => Number)
-  projectId: number
-
+export class ReleaseParams extends ProjectIdentifierParams{
   @ApiProperty()
   @IsSemVer()
   @Type(() => String)
   version: string
 
-
   constructor(projectId: number, version: string) {
+    super()
     this.projectId = projectId;
     this.version = version;
   }

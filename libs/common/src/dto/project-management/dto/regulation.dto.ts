@@ -59,6 +59,7 @@ export class CreateRegulationDto {
 
     @ApiProperty({required: false, description: 'Display name of the regulation' })
     @IsString()
+    @IsOptional()
     displayName?: string;
 
     @ApiProperty({ description: 'Description of the regulation', required: false })
