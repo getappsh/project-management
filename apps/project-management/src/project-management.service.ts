@@ -1,4 +1,4 @@
-import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum } from '@app/common/database/entities';
+import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ReleaseEntity } from '@app/common/database/entities';
 import { ConflictException, HttpException, HttpStatus, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -13,7 +13,7 @@ import { OidcService, UserSearchDto } from '@app/common/oidc/oidc.interface';
 
 
 @Injectable()
-export class ProjectManagementService {
+export class ProjectManagementService{
   
   private readonly logger = new Logger(ProjectManagementService.name);
   constructor(
@@ -30,15 +30,18 @@ export class ProjectManagementService {
     return await this.oidcService.getUsers(params)
   }
 
+  private findProjectCondition(projectIdentifier: number | string) {
+    return typeof projectIdentifier === 'number'
+    ? { id: projectIdentifier }
+    : { name: projectIdentifier };
+  }
   getMemberInProjectByEmail(projectId: number, email: string): Promise<MemberProjectEntity | null>;
   getMemberInProjectByEmail(projectName: string, email: string): Promise<MemberProjectEntity | null>;
 
   getMemberInProjectByEmail(projectIdentifier: number | string, email: string) : Promise<MemberProjectEntity | null>{
     this.logger.verbose(`Get member in project with email: ${email} and project-identifier: ${projectIdentifier}`)
-    const projectCondition =
-    typeof projectIdentifier === 'number'
-      ? { id: projectIdentifier }
-      : { name: projectIdentifier };
+    
+    const projectCondition = this.findProjectCondition(projectIdentifier);
 
     return this.memberProjectRepo.findOne({
       relations: ['project', 'member'],
@@ -127,7 +130,7 @@ export class ProjectManagementService {
     memberProject.status = MemberProjectStatusEnum.ACTIVE;
     await this.memberProjectRepo.save(memberProject);
 
-    return await this.getProject(projectId);
+    return await this.getProjectEntity(projectId);
   }
 
   async addMemberToProject(projectMember: AddMemberToProjectDto): Promise<MemberProjectResDto> {
@@ -141,7 +144,7 @@ export class ProjectManagementService {
 
     this.logger.debug(`Member: ${member}`)
 
-    let project = await this.getProject(projectMember.projectId);
+    let project = await this.getProjectEntity(projectMember.projectId);
     this.logger.debug(`Project: ${project}`)
 
     let mp = await this.memberProjectRepo.findOne({ where: { member: { id: member.id }, project: { id: project.id } } })
@@ -204,14 +207,6 @@ export class ProjectManagementService {
     let saved = await this.memberProjectRepo.save(mp);
 
     return new MemberResDto().fromMemberEntity(mp.member, saved.role);
-  }
-
-  private async getProject(projectId: number): Promise<ProjectEntity> {
-    let project = await this.projectRepo.findOne({ where: { id: projectId } })
-    if (!project) {
-      throw new NotFoundException(`Project with id ${projectId} not found`);
-    }
-    return project;
   }
 
   private async getMember(memberId: number): Promise<MemberEntity> {
@@ -312,6 +307,31 @@ export class ProjectManagementService {
     return mbProjectsRes;
   }
 
+  private async getProjectEntity(projectIdentifier: number | string): Promise<ProjectEntity>{
+    const projectCondition = this.findProjectCondition(projectIdentifier);
+
+    const project = await this.projectRepo.findOneBy(projectCondition);
+    if (!project) {
+      throw new NotFoundException(`Project: ${projectIdentifier} not found`);
+    }
+    return project
+  }
+
+  async getProject(projectIdentifier: number | string): Promise<ProjectDto> {
+    const projectCondition = this.findProjectCondition(projectIdentifier);
+    const project = await this.projectRepo.findOne({
+      where: projectCondition,
+      relations: {memberProject: {member: true}},
+    });
+
+    if (!project) {
+      throw new NotFoundException(`Project: '${projectIdentifier}' not found`);
+    }
+
+    return new ProjectDto().fromProjectEntity(project);
+  }
+
+
   async getDevicesByCatalogId(catalogId: string): Promise<DeviceResDto[]> {
     this.logger.debug('Get devices by catalogId: ' + catalogId)
     let queryBuilder = this.deviceRepo
@@ -357,7 +377,7 @@ export class ProjectManagementService {
 
   async createToken(projectId: number): Promise<ProjectTokenDto> {
     this.logger.log(`Create token for project with id ${projectId}`);
-    let project = await this.getProject(projectId);
+    let project = await this.getProjectEntity(projectId);
 
     const token = this.generateToken(projectId, project.name);
 

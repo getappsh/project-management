@@ -10,6 +10,7 @@ import {
   UpdateRegulationDto,
   RegulationParams,
   ProjectMemberParams,
+  ProjectDto,
 } from '@app/common/dto/project-management';
 import { RpcPayload } from '@app/common/microservice-client';
 import * as fs from 'fs';
@@ -64,6 +65,11 @@ export class ProjectManagementController {
   @MessagePattern(ProjectManagementTopics.GET_USER_PROJECTS)
   getUserProjects(@RpcPayload("stringValue") email: string): Promise<MemberProjectsResDto> {
     return this.projectManagementService.getUserProjects(email);
+  }
+
+  @MessagePattern(ProjectManagementTopics.GET_PROJECT_BY_IDENTIFIER)
+  getProject(@RpcPayload("projectIdentifier") projectIdentifier: number | string): Promise<ProjectDto> {
+    return this.projectManagementService.getProject(projectIdentifier);
   }
 
   @MemberInProject()
