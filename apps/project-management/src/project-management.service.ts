@@ -7,7 +7,8 @@ import { AddMemberToProjectDto, EditProjectMemberDto, ProjectMemberParams } from
 import {
   DeviceResDto, ProjectReleasesDto, ProjectTokenDto,
   MemberProjectResDto, MemberProjectsResDto, MemberResDto, ProjectDto,
-  CreateProjectDto
+  CreateProjectDto,
+  ProjectIdentifierParams
 } from '@app/common/dto/project-management';
 import { OidcService, UserSearchDto } from '@app/common/oidc/oidc.interface';
 
@@ -307,25 +308,22 @@ export class ProjectManagementService{
     return mbProjectsRes;
   }
 
-  private async getProjectEntity(projectIdentifier: number | string): Promise<ProjectEntity>{
-    const projectCondition = this.findProjectCondition(projectIdentifier);
-
-    const project = await this.projectRepo.findOneBy(projectCondition);
+  private async getProjectEntity(projectId: number): Promise<ProjectEntity>{
+    const project = await this.projectRepo.findOneBy({ id: projectId });
     if (!project) {
-      throw new NotFoundException(`Project: ${projectIdentifier} not found`);
+      throw new NotFoundException(`Project: ${projectId} not found`);
     }
     return project
   }
 
-  async getProject(projectIdentifier: number | string): Promise<ProjectDto> {
-    const projectCondition = this.findProjectCondition(projectIdentifier);
+  async getProject(params: ProjectIdentifierParams): Promise<ProjectDto> { 
     const project = await this.projectRepo.findOne({
-      where: projectCondition,
+      where: {id: params.projectId},
       relations: {memberProject: {member: true}},
     });
 
     if (!project) {
-      throw new NotFoundException(`Project: '${projectIdentifier}' not found`);
+      throw new NotFoundException(`Project: '${params.projectId}' not found`);
     }
 
     return new ProjectDto().fromProjectEntity(project);

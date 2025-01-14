@@ -23,7 +23,7 @@ export class MemberInProjectGuard implements CanActivate {
             throw new ForbiddenException(`User is not found in the request.`);
         }
         if (!projectIdentifier){
-            throw new ForbiddenException(`ProjectId is not found in the request.`);
+            throw new ForbiddenException(`Project Identifier is not found in the request.`);
         }
 
         const memberProject = await this.projectManagementService.getMemberInProjectByEmail(projectIdentifier, user?.email);
@@ -31,6 +31,8 @@ export class MemberInProjectGuard implements CanActivate {
             throw new ForbiddenException(`User ${user?.email} is not a member of the project.`);
         }
 
+        request.projectId = memberProject.project.id;
+        
         if (!roles || roles.length === 0) {
             return true;
         }

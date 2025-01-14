@@ -11,6 +11,7 @@ import {
   RegulationParams,
   ProjectMemberParams,
   ProjectDto,
+  ProjectIdentifierParams,
 } from '@app/common/dto/project-management';
 import { RpcPayload } from '@app/common/microservice-client';
 import * as fs from 'fs';
@@ -69,8 +70,8 @@ export class ProjectManagementController {
 
   @MemberInProject()
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_BY_IDENTIFIER)
-  getProject(@RpcPayload("projectIdentifier") projectIdentifier: number | string): Promise<ProjectDto> {
-    return this.projectManagementService.getProject(projectIdentifier);
+  getProject(@RpcPayload() params: ProjectIdentifierParams): Promise<ProjectDto> {
+    return this.projectManagementService.getProject(params);
   }
 
   @MemberInProject()
@@ -89,10 +90,12 @@ export class ProjectManagementController {
   getDevicesByCatalogId(@RpcPayload("stringValue") catalogId: string): Promise<DeviceResDto[]> {
     return this.projectManagementService.getDevicesByCatalogId(catalogId);
   }
+
   @MessagePattern(ProjectManagementTopics.GET_DEVICES_BY_PROJECT)
   getDevicesByProject(@RpcPayload() projectId: number): Promise<DeviceResDto[]> {
     return this.projectManagementService.getDevicesByProject(projectId);
   }
+
   @MessagePattern(ProjectManagementTopics.GET_DEVICES_BY_PLATFORM)
   getDevicesByPlatform(@RpcPayload("stringValue") platform: string): Promise<DeviceResDto[]> {
     return this.projectManagementService.getDevicesByPlatform(platform);
