@@ -30,12 +30,20 @@ export class ProjectManagementService {
     return await this.oidcService.getUsers(params)
   }
 
-  getMemberInProjectByEmail(projectId: number, email: string) {
-    this.logger.debug(`Get member in project with email: ${email} and projectId: ${projectId}`)
+  getMemberInProjectByEmail(projectId: number, email: string): Promise<MemberProjectEntity | null>;
+  getMemberInProjectByEmail(projectName: string, email: string): Promise<MemberProjectEntity | null>;
+
+  getMemberInProjectByEmail(projectIdentifier: number | string, email: string) : Promise<MemberProjectEntity | null>{
+    this.logger.verbose(`Get member in project with email: ${email} and project-identifier: ${projectIdentifier}`)
+    const projectCondition =
+    typeof projectIdentifier === 'number'
+      ? { id: projectIdentifier }
+      : { name: projectIdentifier };
+
     return this.memberProjectRepo.findOne({
       relations: ['project', 'member'],
       where: {
-        project: { id: projectId },
+        project: projectCondition,
         member: { email: email }
       }
     });

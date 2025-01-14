@@ -11,7 +11,6 @@ export class RegulationService {
   constructor(
     @InjectRepository(RegulationEntity) private readonly regulationRepo: Repository<RegulationEntity>,
     @InjectRepository(RegulationTypeEntity) private readonly regulationTypeRepo: Repository<RegulationTypeEntity>,
-    @InjectRepository(UploadVersionEntity) private readonly uploadVersionRepo: Repository<UploadVersionEntity>,
     @InjectRepository(ProjectEntity) private readonly projectRepo: Repository<ProjectEntity>,
   ) { }
 

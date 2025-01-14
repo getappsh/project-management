@@ -17,16 +17,16 @@ export class MemberInProjectGuard implements CanActivate {
         let request = extractRequest(context);
 
         let user = headers?.user;
-        let projectId = request?.projectId
+        let projectIdentifier = request.projectIdentifier ?? request?.projectId
 
         if (!user){
             throw new ForbiddenException(`User is not found in the request.`);
         }
-        if (!projectId){
+        if (!projectIdentifier){
             throw new ForbiddenException(`ProjectId is not found in the request.`);
         }
 
-        const memberProject = await this.projectManagementService.getMemberInProjectByEmail(projectId, user?.email);
+        const memberProject = await this.projectManagementService.getMemberInProjectByEmail(projectIdentifier, user?.email);
         if (!memberProject){
             throw new ForbiddenException(`User ${user?.email} is not a member of the project.`);
         }
