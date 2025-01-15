@@ -10,8 +10,10 @@ import {
   UpdateRegulationDto,
   RegulationParams,
   ProjectMemberParams,
-  ProjectDto,
+  ExtendedProjectDto,
   ProjectIdentifierParams,
+  SearchProjectsQueryDto,
+  GetProjectsQueryDto,
 } from '@app/common/dto/project-management';
 import { RpcPayload } from '@app/common/microservice-client';
 import * as fs from 'fs';
@@ -35,6 +37,15 @@ export class ProjectManagementController {
     return this.projectManagementService.getUsers(params);
   }
 
+  @MessagePattern(ProjectManagementTopics.GET_PROJECTS)
+  getProjects(@RpcPayload() query: GetProjectsQueryDto, @AuthUser('email') email: string) {
+    return this.projectManagementService.getProjects(query, email);
+  }
+
+  @MessagePattern(ProjectManagementTopics.SEARCH_PROJECTS)
+  searchProjects(@RpcPayload() query: SearchProjectsQueryDto, @AuthUser('email') email: string) {
+    return this.projectManagementService.searchProjects(query, email);
+  }
   @MessagePattern(ProjectManagementTopics.CREATE_PROJECT)
   createProject(@RpcPayload() project: CreateProjectDto) {
     return this.projectManagementService.createProject(project);
@@ -70,7 +81,7 @@ export class ProjectManagementController {
 
   @MemberInProject()
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_BY_IDENTIFIER)
-  getProject(@RpcPayload() params: ProjectIdentifierParams): Promise<ProjectDto> {
+  getProject(@RpcPayload() params: ProjectIdentifierParams): Promise<ExtendedProjectDto> {
     return this.projectManagementService.getProject(params);
   }
 

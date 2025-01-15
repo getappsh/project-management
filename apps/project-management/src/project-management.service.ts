@@ -2,15 +2,19 @@ import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, Upload
 import { ConflictException, HttpException, HttpStatus, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, ILike } from 'typeorm';
 import { AddMemberToProjectDto, EditProjectMemberDto, ProjectMemberParams } from '@app/common/dto/project-management/dto/project-member.dto';
 import {
   DeviceResDto, ProjectReleasesDto, ProjectTokenDto,
-  MemberProjectResDto, MemberProjectsResDto, MemberResDto, ProjectDto,
+  MemberProjectResDto, MemberProjectsResDto, MemberResDto, ExtendedProjectDto,
   CreateProjectDto,
-  ProjectIdentifierParams
+  ProjectIdentifierParams,
+  GetProjectsQueryDto,
+  SearchProjectsQueryDto,
+  BaseProjectDto
 } from '@app/common/dto/project-management';
 import { OidcService, UserSearchDto } from '@app/common/oidc/oidc.interface';
+import { PaginatedResultDto } from '@app/common/dto/pagination.dto';
 
 
 @Injectable()
@@ -52,6 +56,59 @@ export class ProjectManagementService{
       }
     });
   }
+
+
+  // TODO pinned and includePinned not implemented
+  async getProjects(query: GetProjectsQueryDto, email: string): Promise<PaginatedResultDto<ExtendedProjectDto>> {
+    this.logger.debug(`Get projects with query: ${JSON.stringify(query)}`)
+    const { page = 1 , perPage = 10, pinned, includePinned } = query;
+    
+    const [projectsEntities, count] = await this.projectRepo.findAndCount({
+      select: {memberProject: true, releases: {catalogId: true}},
+      where: {
+        memberProject: {member: {email: email}},
+      },
+      relations: {memberProject: {member: true}, releases: true},
+      skip: (page - 1) * perPage,
+      take: perPage,
+    })
+
+    const projects = projectsEntities.map(project => new ExtendedProjectDto().fromProjectEntity(project));
+
+    return {
+      data: projects,
+      total: count,
+      perPage: perPage,
+      page: page,
+    }
+
+  }
+
+  // TODO status not implemented
+  async searchProjects(dto: SearchProjectsQueryDto, email: string): Promise<PaginatedResultDto<BaseProjectDto>> {
+    this.logger.debug(`Search projects with query: ${JSON.stringify(dto)}`)
+    const { page = 1 , perPage = 10, query, status} = dto;
+
+    const [projectsEntities, count] = await this.projectRepo.findAndCount({
+      where: {
+        memberProject: {member: {email: email}},
+        name: ILike(`%${query}%`),
+      },
+      skip: (page - 1) * perPage,
+      take: perPage,
+    })
+    
+    const project = projectsEntities.map(project => new BaseProjectDto().fromProjectEntity(project));
+
+    return {
+      data: project,
+      total: count,
+      perPage: perPage,
+      page: page,
+    }
+  }
+
+
 
   private async getOrCreateMember(email: string, invite?: boolean): Promise<MemberEntity> {
 
@@ -117,7 +174,7 @@ export class ProjectManagementService{
     mp = await this.memberProjectRepo.save(mp);
     this.logger.debug(`MemberProject: ${mp}`)
 
-    return new ProjectDto().fromProjectEntity(project)
+    return new ExtendedProjectDto().fromProjectEntity(project)
   }
 
   async confirmMemberInProject(projectId: number, email: string) {
@@ -261,7 +318,7 @@ export class ProjectManagementService{
       }
 
       if (!acc.projects[projectId]) {
-        let prj = new ProjectDto()
+        let prj = new ExtendedProjectDto()
         prj.id = projectId;
         prj.name = memberProject.project_name;
         prj.description = memberProject.project_description;
@@ -316,7 +373,7 @@ export class ProjectManagementService{
     return project
   }
 
-  async getProject(params: ProjectIdentifierParams): Promise<ProjectDto> { 
+  async getProject(params: ProjectIdentifierParams): Promise<ExtendedProjectDto> { 
     const project = await this.projectRepo.findOne({
       where: {id: params.projectId},
       relations: {memberProject: {member: true}},
@@ -326,7 +383,7 @@ export class ProjectManagementService{
       throw new NotFoundException(`Project: '${params.projectId}' not found`);
     }
 
-    return new ProjectDto().fromProjectEntity(project);
+    return new ExtendedProjectDto().fromProjectEntity(project);
   }
 
 
