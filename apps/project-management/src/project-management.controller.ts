@@ -64,8 +64,8 @@ export class ProjectManagementController {
   }
 
   @MessagePattern(ProjectManagementTopics.CONFIRM_PROJECT_MEMBER)
-  confirmMemberInProject(@RpcPayload("stringValue") projectId: number, @AuthUser("email") authEmail: string) {
-    return this.projectManagementService.confirmMemberInProject(projectId, authEmail);
+  confirmMemberInProject(@RpcPayload() params: ProjectIdentifierParams, @AuthUser("email") authEmail: string) {
+    return this.projectManagementService.confirmMemberInProject(params, authEmail);
   }
 
   @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)

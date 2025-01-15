@@ -177,18 +177,18 @@ export class ProjectManagementService{
     return new ExtendedProjectDto().fromProjectEntity(project)
   }
 
-  async confirmMemberInProject(projectId: number, email: string) {
-    this.logger.debug(`Confirm member in project with email: ${email} and projectId: ${projectId}`)
+  async confirmMemberInProject(params: ProjectIdentifierParams, email: string) {
+    this.logger.debug(`Confirm member in project with email: ${email} and projectId: ${params.projectId}`)
     const member = await this.getOrCreateMember(email, false);
-    const memberProject = await this.getMemberInProjectByEmail(projectId, member.email);
+    const memberProject = await this.getMemberInProjectByEmail(params.projectId, member.email);
     if (!memberProject) {
-      throw new NotFoundException(`Member with email ${email} not found in project with id ${projectId}`);
+      throw new NotFoundException(`Member with email ${email} not found in project with id ${params.projectId}`);
     }
 
     memberProject.status = MemberProjectStatusEnum.ACTIVE;
     await this.memberProjectRepo.save(memberProject);
 
-    return await this.getProjectEntity(projectId);
+    return await this.getProjectEntity(params.projectId);
   }
 
   async addMemberToProject(projectMember: AddMemberToProjectDto): Promise<MemberProjectResDto> {
