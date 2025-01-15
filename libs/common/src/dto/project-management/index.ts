@@ -1,6 +1,7 @@
 export * from './dto/project-member.dto'
 export * from './dto/project.dto'
 export * from './dto/project-query-params.dto'
+export * from './dto/project-identifier.dto'
 
 export * from './dto/device-res.dto'
 export * from './dto/member-project-res.dto'

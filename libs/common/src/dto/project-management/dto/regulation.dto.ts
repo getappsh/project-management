@@ -5,6 +5,7 @@ import { IsNotEmpty, IsString, IsOptional, IsNumber } from 'class-validator';
 import { Type } from 'class-transformer';
 import { IsValidStringFor } from '@app/common/validators';
 import { Pattern } from '@app/common/validators/regex.validator';
+import { ProjectIdentifierParams } from './project-identifier.dto';
 
 export class RegulationDto {
     @ApiProperty({ description: 'ID of the regulation' })
@@ -49,6 +50,8 @@ export class RegulationDto {
 }
 
 export class CreateRegulationDto {
+    projectIdentifier: string | number;
+
     projectId: number;
 
     @ApiProperty({ description: 'Name of the regulation' })
@@ -86,6 +89,8 @@ export class CreateRegulationDto {
 
 export class UpdateRegulationDto {
 
+    projectIdentifier: string | number;
+
     projectId: number;
 
     regulationId: number;
@@ -122,11 +127,7 @@ export class UpdateRegulationDto {
 }
 
 
-export class RegulationParams{
-    @ApiProperty({ description: 'ID of the project' })
-    @IsNumber()
-    @Type(() => Number)
-    projectId: number;
+export class RegulationParams extends ProjectIdentifierParams{
 
     @ApiProperty({ description: 'ID of the regulation' })
     @IsNumber()
