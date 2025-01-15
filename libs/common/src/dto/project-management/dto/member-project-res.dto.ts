@@ -1,6 +1,6 @@
 import { MemberEntity, MemberProjectEntity, MemberProjectStatusEnum, RoleInProject } from "@app/common/database/entities";
 import { ApiProperty } from "@nestjs/swagger";
-import { ProjectDto } from "./project.dto";
+import { ExtendedProjectDto } from "./project.dto";
 
 export class MemberResDto {
 
@@ -47,6 +47,13 @@ export class MemberResDto {
     return this
   }
 
+  getName(): string {
+    if (!this.firstName || !this.lastName) {
+      return this.email;
+    }
+    return `${this.firstName} ${this.lastName}`;
+  }
+
   toString(){
     return JSON.stringify(this);
   }
@@ -60,12 +67,12 @@ export class MemberProjectResDto{
   member: MemberResDto;
 
   @ApiProperty({required: false})
-  project: ProjectDto;
+  project: ExtendedProjectDto;
 
 
   fromMemberProjectEntity(memberProject: MemberProjectEntity){
     this.member = new MemberResDto().fromMemberEntity(memberProject.member, memberProject.role);
-    this.project = new ProjectDto().fromProjectEntity(memberProject.project);
+    this.project = new ExtendedProjectDto().fromProjectEntity(memberProject.project);
     return this;
   }
 
@@ -81,11 +88,11 @@ export class MemberProjectsResDto {
   @ApiProperty({required: false})
   member: MemberResDto;
 
-  @ApiProperty({required: false, type: ProjectDto, isArray: true})
-  projects: ProjectDto[];
+  @ApiProperty({required: false, type: ExtendedProjectDto, isArray: true})
+  projects: ExtendedProjectDto[];
   
-  @ApiProperty({required: false, type: ProjectDto , isArray: true})
-  invitedProjects: ProjectDto[];
+  @ApiProperty({required: false, type: ExtendedProjectDto , isArray: true})
+  invitedProjects: ExtendedProjectDto[];
 
   toString(){
     return JSON.stringify(this);
