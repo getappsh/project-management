@@ -18,10 +18,10 @@ import {
 import { RpcPayload } from '@app/common/microservice-client';
 import * as fs from 'fs';
 import { AuthUser } from './utils/auth-user.decorator';
-import { MemberInProject } from './decorators/member-in-project.decorator';
 import { RoleInProject } from '@app/common/database/entities';
 import { RegulationService } from './regulation.service';
 import { UserSearchDto } from '@app/common/oidc/oidc.interface';
+import { ValidateProjectAnyAccess, ValidateProjectUserAccess } from '@app/common/utils/project-access';
 
 @Controller()
 export class ProjectManagementController {
@@ -51,13 +51,13 @@ export class ProjectManagementController {
     return this.projectManagementService.createProject(project);
   }
 
-  @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
+  @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
   @MessagePattern(ProjectManagementTopics.ADD_PROJECT_NEW_MEMBER)
   addMemberToProject(@RpcPayload() projectMember: AddMemberToProjectDto) {
     return this.projectManagementService.addMemberToProject(projectMember);
   }
 
-  @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
+  @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
   @MessagePattern(ProjectManagementTopics.REMOVE_PROJECT_MEMBER)
   removeMemberFromProject(@RpcPayload() params: ProjectMemberParams, @AuthUser("email") authEmail: string) {
     return this.projectManagementService.removeMemberFromProject(params, authEmail);
@@ -68,7 +68,7 @@ export class ProjectManagementController {
     return this.projectManagementService.confirmMemberInProject(params, authEmail);
   }
 
-  @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
+  @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
   @MessagePattern(ProjectManagementTopics.EDIT_PROJECT_MEMBER)
   editProjectMember(@RpcPayload() projectMember: EditProjectMemberDto): Promise<MemberResDto> {
     return this.projectManagementService.editProjectMember(projectMember);
@@ -79,19 +79,19 @@ export class ProjectManagementController {
     return this.projectManagementService.getUserProjects(email);
   }
 
-  @MemberInProject()
+  @ValidateProjectUserAccess()
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_BY_IDENTIFIER)
   getProject(@RpcPayload() params: ProjectIdentifierParams): Promise<ExtendedProjectDto> {
     return this.projectManagementService.getProject(params);
   }
 
-  @MemberInProject()
+  @ValidateProjectUserAccess()
   @MessagePattern(ProjectManagementTopics.CREATE_PROJECT_TOKEN)
   createToken(@RpcPayload("projectId") projectId: number): Promise<ProjectTokenDto> {
     return this.projectManagementService.createToken(projectId);
   }
 
-  @MemberInProject()
+  @ValidateProjectUserAccess()
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_RELEASES)
   getProjectReleases(@RpcPayload('projectId') projectId: number) {
     return this.projectManagementService.getProjectReleases(projectId);
@@ -119,31 +119,31 @@ export class ProjectManagementController {
     return this.regulationService.getRegulationTypes()
   }
 
-  @MemberInProject()
+  @ValidateProjectAnyAccess()
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_REGULATIONS)
   getProjectRegulations(@RpcPayload('projectId') projectId: number) {
     return this.regulationService.getProjectRegulations(projectId)
   }
 
-  @MemberInProject()
+  @ValidateProjectAnyAccess()
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_REGULATION_BY_ID)
   getRegulationById(@RpcPayload() params: RegulationParams) {
     return this.regulationService.getRegulationById(params)
   }
 
-  @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
+  @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
   @MessagePattern(ProjectManagementTopics.CREATE_PROJECT_REGULATION)
   createRegulation(@RpcPayload() regulation: CreateRegulationDto) {
     return this.regulationService.createRegulation(regulation)
   }
 
-  @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
+  @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
   @MessagePattern(ProjectManagementTopics.UPDATE_PROJECT_REGULATION)
   updateRegulation(@RpcPayload() regulation: UpdateRegulationDto) {
     return this.regulationService.updateRegulation(regulation)
   }
 
-  @MemberInProject(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
+  @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
   @MessagePattern(ProjectManagementTopics.DELETE_PROJECT_REGULATION)
   deleteRegulation(@RpcPayload() params: RegulationParams) {
     return this.regulationService.deleteRegulation(params)

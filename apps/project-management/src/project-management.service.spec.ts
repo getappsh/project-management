@@ -61,7 +61,7 @@ describe('ProjectManagementService', () => {
       const projectId = projectMember.projectId;
       const email = projectMember.email;
 
-      const result = await service.getMemberInProjectByEmail(projectId, email);
+      const result = await service.getMemberInProject(projectId, email);
 
       expect(result).toStrictEqual(memberProjectEntityStub());
       expect(memberProjectRepo.findOne).toHaveBeenCalledWith({

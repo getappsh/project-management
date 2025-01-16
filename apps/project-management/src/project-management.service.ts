@@ -15,10 +15,11 @@ import {
 } from '@app/common/dto/project-management';
 import { OidcService, UserSearchDto } from '@app/common/oidc/oidc.interface';
 import { PaginatedResultDto } from '@app/common/dto/pagination.dto';
+import { ProjectAccessService } from '@app/common/utils/project-access';
 
 
 @Injectable()
-export class ProjectManagementService{
+export class ProjectManagementService implements ProjectAccessService{
   
   private readonly logger = new Logger(ProjectManagementService.name);
   constructor(
@@ -30,7 +31,6 @@ export class ProjectManagementService{
     @InjectRepository(DeviceEntity) private readonly deviceRepo: Repository<DeviceEntity>,
     @Inject("OidcProviderService") private readonly oidcService: OidcService
   ) { }
-  
   async getUsers(params: UserSearchDto) {
     return await this.oidcService.getUsers(params)
   }
@@ -40,12 +40,11 @@ export class ProjectManagementService{
     ? { id: projectIdentifier }
     : { name: projectIdentifier };
   }
-  getMemberInProjectByEmail(projectId: number, email: string): Promise<MemberProjectEntity | null>;
-  getMemberInProjectByEmail(projectName: string, email: string): Promise<MemberProjectEntity | null>;
-
-  getMemberInProjectByEmail(projectIdentifier: number | string, email: string) : Promise<MemberProjectEntity | null>{
-    this.logger.verbose(`Get member in project with email: ${email} and project-identifier: ${projectIdentifier}`)
-    
+  
+  getMemberInProject(projectId: number, email: string): Promise<MemberProjectEntity>;
+  getMemberInProject(projectName: string, email: string): Promise<MemberProjectEntity>;
+  getMemberInProject(projectIdentifier: string | number, email: string): Promise<MemberProjectEntity> {
+    this.logger.log(`Get member in project with email: ${email} and project-identifier: ${projectIdentifier}`)
     const projectCondition = this.findProjectCondition(projectIdentifier);
 
     return this.memberProjectRepo.findOne({
@@ -55,6 +54,15 @@ export class ProjectManagementService{
         member: { email: email }
       }
     });
+  }
+
+  async getProjectFromToken(token: string): Promise<ProjectEntity> {
+    const payload = this.jwtService.verify(token)
+    const project = await this.projectRepo.findOne({ where: { id: payload.data.projectId } })
+    if (!project.tokens.includes(token)) {
+      throw new HttpException('Not Allowed in this project ', HttpStatus.FORBIDDEN);
+    }
+    return project;
   }
 
 
@@ -180,7 +188,7 @@ export class ProjectManagementService{
   async confirmMemberInProject(params: ProjectIdentifierParams, email: string) {
     this.logger.debug(`Confirm member in project with email: ${email} and projectId: ${params.projectId}`)
     const member = await this.getOrCreateMember(email, false);
-    const memberProject = await this.getMemberInProjectByEmail(params.projectId, member.email);
+    const memberProject = await this.getMemberInProject(params.projectId, member.email);
     if (!memberProject) {
       throw new NotFoundException(`Member with email ${email} not found in project with id ${params.projectId}`);
     }

@@ -11,6 +11,7 @@ import { ApmModule } from '@app/common/apm/apm.module';
 import { OidcModule } from '@app/common/oidc/oidc.module';
 import { SeederService } from './utils/seeder.service';
 import { RegulationService } from './regulation.service';
+import { PROJECT_ACCESS_SERVICE } from '@app/common/utils/project-access';
 
 @Module({
   imports: [
@@ -29,7 +30,15 @@ import { RegulationService } from './regulation.service';
     OidcModule.forRoot(),
   ],
   controllers: [ProjectManagementController],
-  providers: [ProjectManagementService, RegulationService, SeederService],
+  providers: [
+    ProjectManagementService, 
+    RegulationService, 
+    SeederService,
+    {
+      provide: PROJECT_ACCESS_SERVICE,
+      useClass: ProjectManagementService
+    }
+  ],
   exports: [SeederService],
 })
 export class ProjectManagementModule {}
