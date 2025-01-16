@@ -191,7 +191,7 @@ export class ProjectManagementService{
     return await this.getProjectEntity(params.projectId);
   }
 
-  async addMemberToProject(projectMember: AddMemberToProjectDto): Promise<MemberProjectResDto> {
+  async addMemberToProject(projectMember: AddMemberToProjectDto): Promise<MemberResDto> {
     this.logger.debug(`Add member to project: ${projectMember.email}`)
 
     let member = await this.getOrCreateMember(projectMember.email, true).catch(error => {
@@ -220,7 +220,7 @@ export class ProjectManagementService{
     await this.memberProjectRepo.upsert(mp, ["project", "member"]);
 
     this.logger.debug(`MemberProject: ${mp}`)
-    return new MemberProjectResDto().fromMemberProjectEntity(mp)
+    return new MemberResDto().fromMemberEntity(member, mp.role, mp.status)
   }
 
   async removeMemberFromProject(params: ProjectMemberParams, authEmail: string): Promise<string> {
