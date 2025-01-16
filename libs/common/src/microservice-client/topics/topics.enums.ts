@@ -71,7 +71,6 @@ export const ProjectManagementTopics = {
     SEARCH_PROJECTS: `getapp-project-management.search-projects${region}`,
     GET_PROJECT_BY_IDENTIFIER: `getapp-project-management.get-project-by-identifier${region}`,
 
-    CREATE_PROJECT_TOKEN: `getapp-project-management.create-project-token${region}`,
     ADD_PROJECT_NEW_MEMBER: `getapp-project-management.add-project-new-member${region}`,
     CONFIRM_PROJECT_MEMBER: `getapp-project-management.confirm-project-member${region}`,
     EDIT_PROJECT_MEMBER: `getapp-project-management.edit-project-member${region}`,
@@ -88,6 +87,13 @@ export const ProjectManagementTopics = {
     CREATE_PROJECT_REGULATION: `getapp-project-management.create-project-regulation${region}`,
     UPDATE_PROJECT_REGULATION: `getapp-project-management.update-project-regulation${region}`,
     DELETE_PROJECT_REGULATION: `getapp-project-management.delete-project-regulation${region}`,
+
+    // Tokens
+    GET_PROJECT_TOKENS: `getapp-project-management.get-project-tokens${region}`,
+    GET_PROJECT_TOKEN_BY_ID: `getapp-project-management.get-project-token-by-id${region}`,
+    CREATE_PROJECT_TOKEN: `getapp-project-management.create-project-token${region}`,
+    UPDATE_PROJECT_TOKEN: `getapp-project-management.update-project-token${region}`,
+    DELETE_PROJECT_TOKEN: `getapp-project-management.delete-project-token${region}`,
 
     CHECK_HEALTH: `getapp-project-management.check-health${region}`
 } as const

@@ -3,6 +3,7 @@ import { BaseEntity } from "./base.entity";
 import { MemberProjectEntity } from "./member_project.entity";
 import { RegulationEntity } from "./regulation.entity";
 import { ReleaseEntity } from "./release.entity";
+import { ProjectTokenEntity } from "./project-token.entity";
 
 @Entity("project")
 export class ProjectEntity extends BaseEntity{
@@ -13,10 +14,10 @@ export class ProjectEntity extends BaseEntity{
 
     @Column({name: "description"})
     description: string
-    
-    @Column('simple-array', {name: "tokens", nullable: true})
-    tokens: string[]
    
+    @OneToMany(() => ProjectTokenEntity, (token) => token.project)
+    tokens: ProjectTokenEntity[];
+
     @OneToMany(() => RegulationEntity, regulation => regulation.project)
     regulations: RegulationEntity[]
     
