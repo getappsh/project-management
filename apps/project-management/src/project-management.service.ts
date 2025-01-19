@@ -63,10 +63,11 @@ export class ProjectManagementService implements ProjectAccessService{
 
   async getProjectFromToken(token: string): Promise<ProjectEntity> {
     const payload = this.jwtService.verify(token)
-    const project = await this.projectRepo.findOne({ where: { id: payload.data.projectId, tokens: { token: token } } })
+    const project = await this.projectRepo.findOne({ where: { id: payload.data.projectId, tokens: { token: token, isActive: true } } })
     if (!project) {
       throw new ForbiddenException('Not Allowed in this project');
     }
+    
     return project;
   }
 
@@ -482,7 +483,7 @@ export class ProjectManagementService implements ProjectAccessService{
       project.name,
       dto.name,
       dto.neverExpires ?? false,
-      expirationDate?.getTime() / 1000
+      expirationDate
     );
 
     this.logger.log(`Generated Token: ${token.slice(token.length - 10)}`);
@@ -531,10 +532,11 @@ export class ProjectManagementService implements ProjectAccessService{
   }
   
 
-  private generateToken(projectId: number, projectName: string, name: string, neverExpires: boolean, expiresIn?: number): string {
+  private generateToken(projectId: number, projectName: string, name: string, neverExpires: boolean, expirationDate?: Date): string {
     this.logger.log(`Generate token for project with id ${projectId}`);
     const payload = {projectId, projectName, name, neverExpires}
-    return this.jwtService.sign({ data: payload, expiresIn: expiresIn })
+    const expiresIn = neverExpires ? '100y' : Math.floor((expirationDate.getTime() - Date.now()) / 1000)
+    return this.jwtService.sign({ data: payload}, {expiresIn: expiresIn});
   }
 
 
