@@ -10,13 +10,14 @@ import {
   UpdateRegulationDto,
   RegulationParams,
   ProjectMemberParams,
-  ExtendedProjectDto,
+  ProjectDto,
   ProjectIdentifierParams,
   SearchProjectsQueryDto,
   GetProjectsQueryDto,
   CreateProjectTokenDto,
   TokenParams,
   UpdateProjectTokenDto,
+  DetailedProjectDto,
 } from '@app/common/dto/project-management';
 import { RpcPayload } from '@app/common/microservice-client';
 import * as fs from 'fs';
@@ -85,7 +86,7 @@ export class ProjectManagementController {
 
   @ValidateProjectUserAccess()
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_BY_IDENTIFIER)
-  getProject(@RpcPayload() params: ProjectIdentifierParams): Promise<ExtendedProjectDto> {
+  getProject(@RpcPayload() params: ProjectIdentifierParams): Promise<DetailedProjectDto> {
     return this.projectManagementService.getProject(params);
   }
 

@@ -7,7 +7,7 @@ import { mockCategoryRepo, mockDeviceRepo, mockFormationRepo, mockMemberProjectR
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ProjectConfigDto, projectMemberDtoStub } from '@app/common/dto/project-management';
 import { categoryEntityStub, categoryInputStub, deviceEntityStub, formationEntityStub, memberEntityStub, memberProjectEntityStub, operationSystemEntityStub, operationSystemInputStub, platformEntityStub, projectEntityStub } from '@app/common/database/test/support/stubs';
-import { projectDtoStub, MemberProjectResDto, MemberProjectsResDto, MemberResDto, ExtendedProjectDto, DeviceResDto, ProjectReleasesDto } from '@app/common/dto/project-management';
+import { projectDtoStub, MemberProjectResDto, MemberProjectsResDto, MemberResDto, ProjectDto, DeviceResDto, ProjectReleasesDto } from '@app/common/dto/project-management';
 import { ConflictException, HttpException } from '@nestjs/common';
 import { editProjectMemberDtoStub } from '@app/common/dto/project-management';
 
@@ -131,7 +131,7 @@ describe('ProjectManagementService', () => {
       };
       const createdMemberProjectEntity = memberProjectEntityStub();
       createdMemberProjectEntity.role = RoleInProject.PROJECT_OWNER;
-      const projectResDto = new ExtendedProjectDto().fromProjectEntity(createdMemberProjectEntity.project);
+      const projectResDto = new ProjectDto().fromProjectEntity(createdMemberProjectEntity.project);
 
       const result = await service.createProject(data);
 
@@ -400,7 +400,7 @@ describe('ProjectManagementService', () => {
       memberProjectRepo.createQueryBuilder = jest.fn(() => memberProjectQueryBuilder);
 
       // TODO make this dot stub
-      const expectedProjectDto = new ExtendedProjectDto();
+      const expectedProjectDto = new ProjectDto();
       expectedProjectDto.id = projectId;
       expectedProjectDto.componentName = pm.project.componentName;
       expectedProjectDto.OS = pm.project.OS.name;

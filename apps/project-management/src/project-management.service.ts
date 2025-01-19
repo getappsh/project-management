@@ -6,7 +6,7 @@ import { Repository, ILike } from 'typeorm';
 import { AddMemberToProjectDto, EditProjectMemberDto, ProjectMemberParams } from '@app/common/dto/project-management/dto/project-member.dto';
 import {
   DeviceResDto, ProjectReleasesDto, ProjectTokenDto,
-  MemberProjectsResDto, MemberResDto, ExtendedProjectDto,
+  MemberProjectsResDto, MemberResDto, ProjectDto,
   CreateProjectDto,
   ProjectIdentifierParams,
   GetProjectsQueryDto,
@@ -14,7 +14,8 @@ import {
   BaseProjectDto,
   TokenParams,
   CreateProjectTokenDto,
-  UpdateProjectTokenDto
+  UpdateProjectTokenDto,
+  DetailedProjectDto
 } from '@app/common/dto/project-management';
 import { OidcService, UserSearchDto } from '@app/common/oidc/oidc.interface';
 import { PaginatedResultDto } from '@app/common/dto/pagination.dto';
@@ -71,7 +72,7 @@ export class ProjectManagementService implements ProjectAccessService{
 
 
   // TODO pinned and includePinned not implemented
-  async getProjects(query: GetProjectsQueryDto, email: string): Promise<PaginatedResultDto<ExtendedProjectDto>> {
+  async getProjects(query: GetProjectsQueryDto, email: string): Promise<PaginatedResultDto<ProjectDto>> {
     this.logger.debug(`Get projects with query: ${JSON.stringify(query)}`)
     const { page = 1 , perPage = 10, pinned, includePinned } = query;
     
@@ -85,7 +86,7 @@ export class ProjectManagementService implements ProjectAccessService{
       take: perPage,
     })
 
-    const projects = projectsEntities.map(project => new ExtendedProjectDto().fromProjectEntity(project));
+    const projects = projectsEntities.map(project => new ProjectDto().fromProjectEntity(project));
 
     return {
       data: projects,
@@ -186,7 +187,7 @@ export class ProjectManagementService implements ProjectAccessService{
     mp = await this.memberProjectRepo.save(mp);
     this.logger.debug(`MemberProject: ${mp}`)
 
-    return new ExtendedProjectDto().fromProjectEntity(project)
+    return new ProjectDto().fromProjectEntity(project)
   }
 
   async confirmMemberInProject(params: ProjectIdentifierParams, email: string) {
@@ -309,7 +310,6 @@ export class ProjectManagementService implements ProjectAccessService{
       .select('member_project.role')
       .select('member_project.status')
       .leftJoinAndSelect('member_project.project', 'project')
-      .leftJoinAndSelect('project.regulations', 'regulation')
       .leftJoinAndSelect('member_project.member', 'member')
       .where(`member_project.projectId IN (${subQuery})`)
 
@@ -330,13 +330,12 @@ export class ProjectManagementService implements ProjectAccessService{
       }
 
       if (!acc.projects[projectId]) {
-        let prj = new ExtendedProjectDto()
+        let prj = new DetailedProjectDto()
         prj.id = projectId;
         prj.name = memberProject.project_name;
         prj.description = memberProject.project_description;
-        prj.tokens = tokens != null ? tokens.split(',') : undefined
+        // prj.tokens = tokens != null ? tokens.split(',') : undefined
         prj.members = [];
-        prj.regulation = [];
 
         acc.projects[projectId] = prj
       }
@@ -385,17 +384,17 @@ export class ProjectManagementService implements ProjectAccessService{
     return project
   }
 
-  async getProject(params: ProjectIdentifierParams): Promise<ExtendedProjectDto> { 
+  async getProject(params: ProjectIdentifierParams): Promise<DetailedProjectDto> { 
     const project = await this.projectRepo.findOne({
       where: {id: params.projectId},
-      relations: {memberProject: {member: true}},
+      relations: {memberProject: {member: true}, tokens: true},
     });
 
     if (!project) {
       throw new NotFoundException(`Project: '${params.projectId}' not found`);
     }
 
-    return new ExtendedProjectDto().fromProjectEntity(project);
+    return new DetailedProjectDto().fromProjectEntity(project);
   }
 
 
