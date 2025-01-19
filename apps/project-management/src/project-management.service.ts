@@ -1,17 +1,20 @@
-import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum } from '@app/common/database/entities';
-import { ConflictException, HttpException, HttpStatus, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity } from '@app/common/database/entities';
+import { ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike } from 'typeorm';
 import { AddMemberToProjectDto, EditProjectMemberDto, ProjectMemberParams } from '@app/common/dto/project-management/dto/project-member.dto';
 import {
   DeviceResDto, ProjectReleasesDto, ProjectTokenDto,
-  MemberProjectResDto, MemberProjectsResDto, MemberResDto, ExtendedProjectDto,
+  MemberProjectsResDto, MemberResDto, ExtendedProjectDto,
   CreateProjectDto,
   ProjectIdentifierParams,
   GetProjectsQueryDto,
   SearchProjectsQueryDto,
-  BaseProjectDto
+  BaseProjectDto,
+  TokenParams,
+  CreateProjectTokenDto,
+  UpdateProjectTokenDto
 } from '@app/common/dto/project-management';
 import { OidcService, UserSearchDto } from '@app/common/oidc/oidc.interface';
 import { PaginatedResultDto } from '@app/common/dto/pagination.dto';
@@ -28,6 +31,7 @@ export class ProjectManagementService implements ProjectAccessService{
     @InjectRepository(MemberProjectEntity) private readonly memberProjectRepo: Repository<MemberProjectEntity>,
     @InjectRepository(MemberEntity) private readonly memberRepo: Repository<MemberEntity>,
     @InjectRepository(ProjectEntity) private readonly projectRepo: Repository<ProjectEntity>,
+    @InjectRepository(ProjectTokenEntity) private readonly tokenRepo: Repository<ProjectTokenEntity>,
     @InjectRepository(DeviceEntity) private readonly deviceRepo: Repository<DeviceEntity>,
     @Inject("OidcProviderService") private readonly oidcService: OidcService
   ) { }
@@ -58,9 +62,9 @@ export class ProjectManagementService implements ProjectAccessService{
 
   async getProjectFromToken(token: string): Promise<ProjectEntity> {
     const payload = this.jwtService.verify(token)
-    const project = await this.projectRepo.findOne({ where: { id: payload.data.projectId } })
-    if (!project.tokens.includes(token)) {
-      throw new HttpException('Not Allowed in this project ', HttpStatus.FORBIDDEN);
+    const project = await this.projectRepo.findOne({ where: { id: payload.data.projectId, tokens: { token: token } } })
+    if (!project) {
+      throw new ForbiddenException('Not Allowed in this project');
     }
     return project;
   }
@@ -438,29 +442,6 @@ export class ProjectManagementService implements ProjectAccessService{
     return devices.map(dvs => new DeviceResDto().formEntity(dvs));
   }
 
-  async createToken(projectId: number): Promise<ProjectTokenDto> {
-    this.logger.log(`Create token for project with id ${projectId}`);
-    let project = await this.getProjectEntity(projectId);
-
-    const token = this.generateToken(projectId, project.name);
-
-    this.logger.log(`Generated Token: ${token.projectToken}`)
-
-    if (project.tokens == null) {
-      project.tokens = [token.projectToken];
-    } else {
-      project.tokens.push(token.projectToken);
-    }
-    this.projectRepo.save(project);
-    return token
-  }
-
-  private generateToken(projectId: number, projectName: string): ProjectTokenDto {
-    const payload = { projectId: projectId, projectName: projectName }
-
-    return { projectToken: this.jwtService.sign({ data: payload }) } as ProjectTokenDto;
-  }
-
   async getProjectReleases(projectId: number): Promise<ProjectReleasesDto[]> {
     this.logger.log(`Get all releases for project with id ${projectId}`);
     let uploadVersions = await this.uploadVersionRepo.find({
@@ -475,4 +456,87 @@ export class ProjectManagementService implements ProjectAccessService{
 
     return projectReleases
   }
+
+
+  async getProjectTokens(projectId: number): Promise<ProjectTokenDto[]>{
+    this.logger.log(`Get all tokens for project with id ${projectId}`);
+    const tokens = await this.tokenRepo.find({where: { project: { id: projectId } }})
+    return tokens.map(t => ProjectTokenDto.fromProjectTokenEntity(t))
+  }
+
+  async getProjectTokenById(params: TokenParams): Promise<ProjectTokenDto> {
+    this.logger.log(`Get token with id ${params.tokenId} for project with id ${params.projectId}`);
+    const token = await this.tokenRepo.findOne({ where: { id: params.tokenId, project: { id: params.projectId } } })
+    if (!token) {
+      throw new NotFoundException(`Token with id ${params.tokenId} for project with id ${params.projectId} not found`)
+    }
+    return ProjectTokenDto.fromProjectTokenEntity(token)
+  }
+
+  async createToken(dto: CreateProjectTokenDto): Promise<ProjectTokenDto> {
+    this.logger.log(`Create token for project with id ${dto.projectId}`);
+    let project = await this.getProjectEntity(dto.projectId);
+
+    const expirationDate = dto?.expirationDate ? new Date(dto?.expirationDate) : null;
+    const token = this.generateToken(
+      dto.projectId,
+      project.name,
+      dto.name,
+      dto.neverExpires ?? false,
+      expirationDate?.getTime() / 1000
+    );
+
+    this.logger.log(`Generated Token: ${token.slice(token.length - 10)}`);
+
+    const yearFromNow = new Date();
+    yearFromNow.setFullYear(yearFromNow.getFullYear() + 1);
+
+    const projectToken = new ProjectTokenEntity();
+    projectToken.token = token;
+    projectToken.name = dto.name;
+    projectToken.neverExpires = dto.neverExpires ?? false;
+    projectToken.expirationDate = dto.neverExpires ? null : dto?.expirationDate ?? yearFromNow;
+    projectToken.project = project;
+    try {
+      const savedProjectToken = await this.tokenRepo.save(projectToken);
+      return ProjectTokenDto.fromProjectTokenEntity(savedProjectToken);
+    } catch (error) {
+      throw new InternalServerErrorException(error);
+    }
+  }
+
+  async updateProjectToken(dto: UpdateProjectTokenDto): Promise<ProjectTokenDto> {
+    this.logger.log(`Update token with id ${dto.id} for project with id ${dto.projectId}`);
+    const token = await this.tokenRepo.findOne({ where: { id: dto.id, project: { id: dto.projectId } } })
+    if (!token) {
+      throw new NotFoundException(`Token with id ${dto.id} for project with id ${dto.projectId} not found`)
+    }
+    token.name = dto.name;
+    token.isActive = dto.isActive;
+    try {
+      const savedProjectToken = await this.tokenRepo.save(token);
+      return ProjectTokenDto.fromProjectTokenEntity(savedProjectToken);
+    } catch (error) {
+      throw new InternalServerErrorException(error);
+    }
+  }
+
+
+  async deleteProjectToken(params: TokenParams): Promise<string> {
+    this.logger.log(`Delete token with id ${params.tokenId} for project with id ${params.projectId}`);
+    const {raw, affected} = await this.tokenRepo.delete({ id: params.tokenId, project: { id: params.projectId } })
+    if (affected === 0) {
+      throw new NotFoundException(`Token with id ${params.tokenId} for project with id ${params.projectId} not found`)
+    }
+    return "Token deleted successfully"
+  }
+  
+
+  private generateToken(projectId: number, projectName: string, name: string, neverExpires: boolean, expiresIn?: number): string {
+    this.logger.log(`Generate token for project with id ${projectId}`);
+    const payload = {projectId, projectName, name, neverExpires}
+    return this.jwtService.sign({ data: payload, expiresIn: expiresIn })
+  }
+
+
 }

@@ -14,6 +14,9 @@ import {
   ProjectIdentifierParams,
   SearchProjectsQueryDto,
   GetProjectsQueryDto,
+  CreateProjectTokenDto,
+  TokenParams,
+  UpdateProjectTokenDto,
 } from '@app/common/dto/project-management';
 import { RpcPayload } from '@app/common/microservice-client';
 import * as fs from 'fs';
@@ -21,7 +24,8 @@ import { AuthUser } from './utils/auth-user.decorator';
 import { RoleInProject } from '@app/common/database/entities';
 import { RegulationService } from './regulation.service';
 import { UserSearchDto } from '@app/common/oidc/oidc.interface';
-import { ValidateProjectAnyAccess, ValidateProjectUserAccess } from '@app/common/utils/project-access';
+import { ValidateProjectAnyAccess, ValidateProjectTokenAccess, ValidateProjectUserAccess } from '@app/common/utils/project-access';
+import { Validate } from 'class-validator';
 
 @Controller()
 export class ProjectManagementController {
@@ -85,11 +89,6 @@ export class ProjectManagementController {
     return this.projectManagementService.getProject(params);
   }
 
-  @ValidateProjectUserAccess()
-  @MessagePattern(ProjectManagementTopics.CREATE_PROJECT_TOKEN)
-  createToken(@RpcPayload("projectId") projectId: number): Promise<ProjectTokenDto> {
-    return this.projectManagementService.createToken(projectId);
-  }
 
   @ValidateProjectUserAccess()
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_RELEASES)
@@ -147,6 +146,38 @@ export class ProjectManagementController {
   @MessagePattern(ProjectManagementTopics.DELETE_PROJECT_REGULATION)
   deleteRegulation(@RpcPayload() params: RegulationParams) {
     return this.regulationService.deleteRegulation(params)
+  }
+
+  // PROJECT TOKEN
+
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.GET_PROJECT_TOKENS)
+  getProjectTokens(@RpcPayload() params: ProjectIdentifierParams) {
+    return this.projectManagementService.getProjectTokens(params.projectId)
+  }
+
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.GET_PROJECT_TOKEN_BY_ID)
+  getProjectTokenById(@RpcPayload() params: TokenParams) {
+    return this.projectManagementService.getProjectTokenById(params)
+  }
+
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.CREATE_PROJECT_TOKEN)
+  createProjectToken(@RpcPayload() dto: CreateProjectTokenDto) {
+    return this.projectManagementService.createToken(dto)
+  }
+
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.UPDATE_PROJECT_TOKEN)
+  updateProjectToken(@RpcPayload() dto: UpdateProjectTokenDto) {
+    return this.projectManagementService.updateProjectToken(dto)
+  }
+
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.DELETE_PROJECT_TOKEN)
+  deleteProjectToken(@RpcPayload() params: TokenParams) {
+    return this.projectManagementService.deleteProjectToken(params)
   }
 
   @MessagePattern(ProjectManagementTopics.CHECK_HEALTH)

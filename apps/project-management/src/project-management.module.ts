@@ -1,5 +1,5 @@
 import { DatabaseModule, UploadJwtConfigService,  } from '@app/common';
-import { MemberEntity, ProjectEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity } from '@app/common/database/entities';
+import { MemberEntity, ProjectEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity } from '@app/common/database/entities';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -25,7 +25,7 @@ import { PROJECT_ACCESS_SERVICE } from '@app/common/utils/project-access';
     TypeOrmModule.forFeature([
       MemberEntity, ProjectEntity, MemberProjectEntity, UploadVersionEntity, 
       RegulationEntity, RegulationTypeEntity,
-      DeviceEntity,
+      DeviceEntity, ProjectTokenEntity
     ]),
     OidcModule.forRoot(),
   ],
