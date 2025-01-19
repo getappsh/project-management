@@ -1,12 +1,10 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { MemberResDto } from "./member-project-res.dto";
 import { ProjectEntity, RoleInProject } from "@app/common/database/entities";
-import { IsString, IsNotEmpty, IsOptional, ValidateIf } from "class-validator";
-import { RegulationDto } from "./regulation.dto";
-import { Transform } from "class-transformer";
-import { BadRequestException } from "@nestjs/common";
+import { IsString, IsNotEmpty, IsOptional } from "class-validator";
 import { IsValidStringFor } from "@app/common/validators";
 import { Pattern } from "@app/common/validators/regex.validator";
+import { ProjectTokenDto } from "./project-token.dto";
 
 export class BaseProjectDto {
 
@@ -28,7 +26,7 @@ export class BaseProjectDto {
   
 }
 
-export class ExtendedProjectDto extends BaseProjectDto {
+export class ProjectDto extends BaseProjectDto {
 
   @ApiProperty({ description: 'Owner of the project' })
   owner: string;
@@ -36,38 +34,33 @@ export class ExtendedProjectDto extends BaseProjectDto {
   @ApiProperty({ required: false })
   description?: string;
 
-  @ApiProperty({ required: false, type: String, isArray: true })
-  tokens?: string[]
-
-  @ApiProperty({ required: false, type: RegulationDto, isArray: true })
-  regulation?: RegulationDto[]
-
-  @ApiProperty({ required: false, type: MemberResDto, isArray: true })
-  members?: MemberResDto[]
+  @ApiProperty({ required: false, description: "Number of members in the project" })
+  numMembers?: number
 
   @ApiProperty({ description: 'Number of versions available for the project', example: 5 })
   versions: number;
+
+  @ApiProperty({ required: false, description: 'Latest release of the project' })
+  latestRelease?: string;
+
+  @ApiProperty({ required: false,  description: 'Upcoming release' })
+  upcomingRelease?: string;
+
+  @ApiProperty({required: false, description: 'Upcoming release stage' })
+  upcomingReleaseStage?: string;
 
   fromProjectEntity(project: ProjectEntity) {
     super.fromProjectEntity(project);
 
     this.description = project.description;
-    this.tokens = project.tokens;
+    this.versions = project.releases?.length;
+    this.numMembers = project.memberProject.length;
 
-    this.versions = project.releases?.length
-
-    if (project.regulations) {
-      this.regulation = project.regulations.map(regulation => new RegulationDto().fromRegulationEntity(regulation))
+    const ownerEntity =project.memberProject?.find(mp => mp.role === RoleInProject.PROJECT_OWNER);
+    if(ownerEntity){
+      this.owner = new MemberResDto().fromMemberProjectEntity(ownerEntity)?.getName();
     }
-
-    if (project.memberProject){
-      this.members = project.memberProject.map(memberProject => new MemberResDto().fromMemberProjectEntity(memberProject))
-    }
-
-    this.owner = this.members?.find(mp => mp.role === RoleInProject.PROJECT_OWNER)?.getName();
-
-
-
+    
     return this;
   }
 
@@ -75,6 +68,30 @@ export class ExtendedProjectDto extends BaseProjectDto {
     return JSON.stringify(this);
   }
 }
+
+export class DetailedProjectDto extends ProjectDto {
+
+  @ApiProperty({type: Date, })
+  createdAt: Date
+
+  @ApiProperty({ required: false, type: MemberResDto, isArray: true })
+  members?: MemberResDto[]
+
+  
+  @ApiProperty({ required: false, type: ProjectTokenDto, isArray: true })
+  tokens?: ProjectTokenDto[]
+
+
+  fromProjectEntity(project: ProjectEntity) {
+    super.fromProjectEntity(project);
+    this.createdAt = project.createdDate;
+    this.members = project.memberProject?.map(memberProject => new MemberResDto().fromMemberProjectEntity(memberProject));
+    this.tokens = project.tokens?.map(token => ProjectTokenDto.fromProjectTokenEntity(token))
+    return this;
+  }
+
+}
+
 
 
 export class CreateProjectDto {
