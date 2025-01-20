@@ -1,5 +1,5 @@
 import { ProjectManagementTopics } from '@app/common/microservice-client/topics';
-import { Controller, Logger } from '@nestjs/common';
+import { Controller, Logger, UseInterceptors } from '@nestjs/common';
 import { MessagePattern } from '@nestjs/microservices';
 import { ProjectManagementService } from './project-management.service';
 import { DeviceResDto } from '@app/common/dto/project-management/dto/device-res.dto';
@@ -18,8 +18,9 @@ import {
   TokenParams,
   UpdateProjectTokenDto,
   DetailedProjectDto,
+  EditProjectDto,
 } from '@app/common/dto/project-management';
-import { RpcPayload } from '@app/common/microservice-client';
+import { RpcPayload, UserContextInterceptor } from '@app/common/microservice-client';
 import * as fs from 'fs';
 import { AuthUser } from './utils/auth-user.decorator';
 import { RoleInProject } from '@app/common/database/entities';
@@ -29,6 +30,7 @@ import { ValidateProjectAnyAccess, ValidateProjectTokenAccess, ValidateProjectUs
 import { Validate } from 'class-validator';
 
 @Controller()
+@UseInterceptors(UserContextInterceptor)
 export class ProjectManagementController {
   private readonly logger = new Logger(ProjectManagementController.name);
 
@@ -54,6 +56,18 @@ export class ProjectManagementController {
   @MessagePattern(ProjectManagementTopics.CREATE_PROJECT)
   createProject(@RpcPayload() project: CreateProjectDto) {
     return this.projectManagementService.createProject(project);
+  }
+
+  @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
+  @MessagePattern(ProjectManagementTopics.EDIT_PROJECT)
+  editProject(@RpcPayload() project: EditProjectDto) {
+    return this.projectManagementService.editProject(project);
+  }
+
+  @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER)
+  @MessagePattern(ProjectManagementTopics.DELETE_PROJECT)
+  deleteProject(@RpcPayload() params: ProjectIdentifierParams) {
+    return this.projectManagementService.deleteProject(params);
   }
 
   @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)

@@ -1,5 +1,5 @@
 import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity } from '@app/common/database/entities';
-import { ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike, In } from 'typeorm';
@@ -15,15 +15,20 @@ import {
   TokenParams,
   CreateProjectTokenDto,
   UpdateProjectTokenDto,
-  DetailedProjectDto
+  DetailedProjectDto,
+  EditProjectDto
 } from '@app/common/dto/project-management';
 import { OidcService, UserSearchDto } from '@app/common/oidc/oidc.interface';
 import { PaginatedResultDto } from '@app/common/dto/pagination.dto';
 import { ProjectAccessService } from '@app/common/utils/project-access';
+import { MicroserviceClient, MicroserviceName } from '@app/common/microservice-client';
+import { UploadTopics } from '@app/common/microservice-client/topics';
+import { ReleaseParams } from '@app/common/dto/upload';
+import { lastValueFrom } from 'rxjs';
 
 
 @Injectable()
-export class ProjectManagementService implements ProjectAccessService{
+export class ProjectManagementService implements ProjectAccessService, OnModuleInit{
   
   private readonly logger = new Logger(ProjectManagementService.name);
   constructor(
@@ -34,7 +39,8 @@ export class ProjectManagementService implements ProjectAccessService{
     @InjectRepository(ProjectEntity) private readonly projectRepo: Repository<ProjectEntity>,
     @InjectRepository(ProjectTokenEntity) private readonly tokenRepo: Repository<ProjectTokenEntity>,
     @InjectRepository(DeviceEntity) private readonly deviceRepo: Repository<DeviceEntity>,
-    @Inject("OidcProviderService") private readonly oidcService: OidcService
+    @Inject("OidcProviderService") private readonly oidcService: OidcService,
+    @Inject(MicroserviceName.UPLOAD_SERVICE) private readonly uploadClient: MicroserviceClient,
   ) { }
   async getUsers(params: UserSearchDto) {
     return await this.oidcService.getUsers(params)
@@ -49,7 +55,7 @@ export class ProjectManagementService implements ProjectAccessService{
   getMemberInProject(projectId: number, email: string): Promise<MemberProjectEntity>;
   getMemberInProject(projectName: string, email: string): Promise<MemberProjectEntity>;
   getMemberInProject(projectIdentifier: string | number, email: string): Promise<MemberProjectEntity> {
-    this.logger.log(`Get member in project with email: ${email} and project-identifier: ${projectIdentifier}`)
+    this.logger.verbose(`Get member in project with email: ${email} and project-identifier: ${projectIdentifier}`)
     const projectCondition = this.findProjectCondition(projectIdentifier);
 
     return this.memberProjectRepo.findOne({
@@ -166,7 +172,7 @@ export class ProjectManagementService implements ProjectAccessService{
   }
 
 
-  async createProject(projectDto: CreateProjectDto) {
+  async createProject(projectDto: CreateProjectDto): Promise<BaseProjectDto> {
     this.logger.debug(`Create project: ${projectDto.name}`)
 
     let project = new ProjectEntity();
@@ -195,7 +201,58 @@ export class ProjectManagementService implements ProjectAccessService{
     mp = await this.memberProjectRepo.save(mp);
     this.logger.debug(`MemberProject: ${mp}`)
 
-    return new ProjectDto().fromProjectEntity(project)
+    return new BaseProjectDto().fromProjectEntity(project)
+  }
+
+  async editProject(dto: EditProjectDto): Promise<BaseProjectDto>{
+    this.logger.debug(`Edit project: ${dto.projectId}`)
+ 
+    const project =  new ProjectEntity();
+    project.id = dto.projectId;
+    project.name = dto.name;
+    project.description = dto.description;
+    try {
+      await this.projectRepo.save(project);
+      return new BaseProjectDto().fromProjectEntity(await this.getProjectEntity(dto.projectId));
+    }catch(error){
+      if (error.code === '23505'){
+        throw new ConflictException('Project name already exists');
+      }
+      throw error;
+    }
+  }
+
+  async deleteProject(params: ProjectIdentifierParams): Promise<string> {
+    this.logger.log(`Delete project with id: ${params.projectId}`)
+    const project = await this.projectRepo.findOne({
+      select: {releases: {version: true}},
+      where: {id: params.projectId},
+      relations: {releases: true}
+    });
+    
+    if (project.releases.length > 0) {
+      this.logger.debug(`Send deleted request to upload for ${project.releases.length} releases`)
+      const releasesParams = project.releases.map(release => new ReleaseParams(params.projectId, release.version))
+      try {
+        await Promise.all(releasesParams.map(release => lastValueFrom(this.uploadClient.send(UploadTopics.DELETE_RELEASE, release))))
+      }catch (error) {
+        throw new InternalServerErrorException(error.message);
+      }
+    }
+
+    try {
+      const {raw, affected} = await this.projectRepo.delete({id: params.projectId});
+      if (affected === 0){
+        throw new NotFoundException(`Project with id ${params.projectId} not found, delete failed`);
+      }
+      return `Project '${project.name}' deleted successfully`;
+    }catch (error) {
+      if (error.code === '23503') { // foreign key violation, meaning a referenced row does not exist in the referenced table
+        throw new ConflictException('Delete Project releases failed, Try again later')
+      }
+      throw error
+    }
+    
   }
 
   async confirmMemberInProject(params: ProjectIdentifierParams, email: string) {
@@ -546,5 +603,10 @@ export class ProjectManagementService implements ProjectAccessService{
     return this.jwtService.sign({ data: payload}, {expiresIn: expiresIn});
   }
 
+
+  async onModuleInit() {
+    this.uploadClient.subscribeToResponseOf([UploadTopics.DELETE_RELEASE])
+    await this.uploadClient.connect()
+  }
 
 }

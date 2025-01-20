@@ -12,6 +12,7 @@ import { OidcModule } from '@app/common/oidc/oidc.module';
 import { SeederService } from './utils/seeder.service';
 import { RegulationService } from './regulation.service';
 import { PROJECT_ACCESS_SERVICE } from '@app/common/utils/project-access';
+import { MicroserviceModule, MicroserviceName, MicroserviceType } from '@app/common/microservice-client';
 
 @Module({
   imports: [
@@ -28,6 +29,10 @@ import { PROJECT_ACCESS_SERVICE } from '@app/common/utils/project-access';
       DeviceEntity, ProjectTokenEntity
     ]),
     OidcModule.forRoot(),
+    MicroserviceModule.register({
+      name: MicroserviceName.UPLOAD_SERVICE,
+      type: MicroserviceType.UPLOAD,
+    }),
   ],
   controllers: [ProjectManagementController],
   providers: [
