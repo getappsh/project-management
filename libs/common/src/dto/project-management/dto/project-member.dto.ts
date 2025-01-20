@@ -1,7 +1,7 @@
-import { RoleInProject } from "@app/common/database/entities";
+import { MemberProjectEntity, RoleInProject } from "@app/common/database/entities";
 import { ApiProperty } from "@nestjs/swagger";
 import { Type } from "class-transformer";
-import { IsOptional, IsEmail, IsEnum, IsNumber } from "class-validator";
+import { IsOptional, IsEmail, IsEnum, IsNumber, IsBoolean } from "class-validator";
 import { ProjectIdentifierParams } from "./project-identifier.dto";
 
 export class AddMemberToProjectDto{
@@ -41,4 +41,24 @@ export class ProjectMemberParams extends ProjectIdentifierParams{
     @IsNumber()
     @Type(() => Number)
     memberId: number;
+}
+
+
+export class ProjectMemberPreferencesDto{
+
+    projectIdentifier: string | number;
+
+    projectId: number
+
+    @ApiProperty({required: false})
+    @IsOptional()
+    @IsBoolean()
+    pinned?: boolean
+
+
+    static fromMemberEntity(memberProject: MemberProjectEntity): ProjectMemberPreferencesDto {
+        const pref = new ProjectMemberPreferencesDto();
+        pref.pinned = memberProject.pinned;
+        return pref
+    }
 }
