@@ -3,7 +3,7 @@ import { ConflictException, ForbiddenException, HttpException, HttpStatus, Injec
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike, In } from 'typeorm';
-import { AddMemberToProjectDto, EditProjectMemberDto, ProjectMemberParams } from '@app/common/dto/project-management/dto/project-member.dto';
+import { AddMemberToProjectDto, EditProjectMemberDto, ProjectMemberParams, ProjectMemberPreferencesDto } from '@app/common/dto/project-management/dto/project-member.dto';
 import {
   DeviceResDto, ProjectReleasesDto, ProjectTokenDto,
   MemberProjectsResDto, MemberResDto, ProjectDto,
@@ -345,13 +345,6 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     return new MemberResDto().fromMemberEntity(mp.member, saved.role);
   }
 
-  private async getMember(memberId: number): Promise<MemberEntity> {
-    let member = await this.memberRepo.findOneBy({ id: memberId })
-    if (!member) {
-      throw new NotFoundException(`Member with id ${memberId} not found`);
-    }
-    return member;
-  }
 
   private async getMemberByEmail(email: string): Promise<MemberEntity> {
     let member = await this.memberRepo.findOneBy({ email })
@@ -359,6 +352,25 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       throw new NotFoundException(`Member with email ${email} not found`);
     }
     return member;
+  }
+
+  async getMemberProjectPreferences(params: ProjectIdentifierParams, email: string): Promise<ProjectMemberPreferencesDto> {
+    this.logger.debug(`Get preferences for users: ${email}`)
+    const member = await this.memberProjectRepo.findOneBy({ member: { email }, project: { id: params.projectId } })
+    return ProjectMemberPreferencesDto.fromMemberEntity(member);
+  }
+
+  async updateMemberProjectPreferences(dto: ProjectMemberPreferencesDto, email: string): Promise<ProjectMemberPreferencesDto> {
+    this.logger.debug(`Update preferences for users: ${email}`)
+    const member = await this.memberProjectRepo.findOneBy({ member: { email }, project: { id: dto.projectId } })
+    if (!member) {
+      throw new NotFoundException(`Member with email ${email} not found`);
+    }
+
+    member.pinned = dto.pinned;
+
+    const entity = await this.memberProjectRepo.save(member);
+    return ProjectMemberPreferencesDto.fromMemberEntity(entity);
   }
 
   // todo get default project

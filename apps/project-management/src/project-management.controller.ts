@@ -19,6 +19,7 @@ import {
   UpdateProjectTokenDto,
   DetailedProjectDto,
   EditProjectDto,
+  ProjectMemberPreferencesDto,
 } from '@app/common/dto/project-management';
 import { RpcPayload, UserContextInterceptor } from '@app/common/microservice-client';
 import * as fs from 'fs';
@@ -91,6 +92,18 @@ export class ProjectManagementController {
   @MessagePattern(ProjectManagementTopics.EDIT_PROJECT_MEMBER)
   editProjectMember(@RpcPayload() projectMember: EditProjectMemberDto): Promise<MemberResDto> {
     return this.projectManagementService.editProjectMember(projectMember);
+  }
+
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.GET_MEMBER_PROJECT_PREFERENCES)
+  getMemberProjectPreferences(@RpcPayload() params: ProjectIdentifierParams, @AuthUser("email") authEmail: string) {
+    return this.projectManagementService.getMemberProjectPreferences(params, authEmail);
+
+  }
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.UPDATE_MEMBER_PROJECT_PREFERENCES)
+  updateMemberProjectPreferences(@RpcPayload() dto: ProjectMemberPreferencesDto, @AuthUser("email") authEmail: string) {
+    return this.projectManagementService.updateMemberProjectPreferences(dto, authEmail);
   }
 
   @MessagePattern(ProjectManagementTopics.GET_USER_PROJECTS)
