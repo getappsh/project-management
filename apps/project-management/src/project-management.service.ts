@@ -2,7 +2,7 @@ import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, Upload
 import { ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, ILike } from 'typeorm';
+import { Repository, ILike, In } from 'typeorm';
 import { AddMemberToProjectDto, EditProjectMemberDto, ProjectMemberParams } from '@app/common/dto/project-management/dto/project-member.dto';
 import {
   DeviceResDto, ProjectReleasesDto, ProjectTokenDto,
@@ -77,16 +77,23 @@ export class ProjectManagementService implements ProjectAccessService{
     this.logger.debug(`Get projects with query: ${JSON.stringify(query)}`)
     const { page = 1 , perPage = 10, pinned, includePinned } = query;
     
-    const [projectsEntities, count] = await this.projectRepo.findAndCount({
-      select: {memberProject: true, releases: {catalogId: true}},
+    const [projectsId, count] = await this.projectRepo.findAndCount({
+      select: {id: true},
       where: {
         memberProject: {member: {email: email}},
+      }
+    });
+
+    const projectsEntities = await this.projectRepo.find({
+      select: {memberProject: true, releases: {catalogId: true}},
+      where: {
+        id: In(projectsId.map(project => project.id))
       },
       relations: {memberProject: {member: true}, releases: true},
       skip: (page - 1) * perPage,
       take: perPage,
     })
-
+    
     const projects = projectsEntities.map(project => new ProjectDto().fromProjectEntity(project));
 
     return {
