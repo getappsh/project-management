@@ -9,7 +9,6 @@ export const UploadTopics = {
     CHECK_HEALTH: `getapp-upload.check-health${region}`,
     CREATE_FILE_UPLOAD_URL: `getapp-upload.create-file-upload-url${region}`,
 
-
 // Releases
     GET_RELEASES: `getapp-upload.get-releases${region}`,
     GET_RELEASE_BY_VERSION: `getapp-upload.get-release-by-version${region}`,
@@ -66,7 +65,10 @@ export const DeployTopicsEmit = {
 export const ProjectManagementTopics = {
     GET_USERS: `getapp-project-management.get-users${region}`,
     GET_USER_PROJECTS: `getapp-project-management.get-user-projects${region}`,
+
     CREATE_PROJECT: `getapp-project-management.create-project${region}`,
+    EDIT_PROJECT: `getapp-project-management.edit-project${region}`,
+    DELETE_PROJECT: `getapp-project-management.delete-project${region}`,
     GET_PROJECTS: `getapp-project-management.get-projects${region}`,
     SEARCH_PROJECTS: `getapp-project-management.search-projects${region}`,
     GET_PROJECT_BY_IDENTIFIER: `getapp-project-management.get-project-by-identifier${region}`,

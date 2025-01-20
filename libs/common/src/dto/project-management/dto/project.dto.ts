@@ -1,4 +1,4 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, PartialType } from "@nestjs/swagger";
 import { MemberResDto } from "./member-project-res.dto";
 import { ProjectEntity, RoleInProject } from "@app/common/database/entities";
 import { IsString, IsNotEmpty, IsOptional } from "class-validator";
@@ -14,12 +14,16 @@ export class BaseProjectDto {
   @ApiProperty({ description: 'Name of the project'})
   name: string;
 
+  @ApiProperty({ required: false })
+  description?: string;
+
   @ApiProperty({ required: false,  description: 'Status of the project (active, completed, on-hold)'})
   status?: string; // Needs to be an enum
 
   fromProjectEntity(project: ProjectEntity) {
     this.id = project.id;
     this.name = project.name;
+    this.description = project.description;
     // this.status = project.status;
     return this;
   }
@@ -30,9 +34,6 @@ export class ProjectDto extends BaseProjectDto {
 
   @ApiProperty({ description: 'Owner of the project' })
   owner: string;
-
-  @ApiProperty({ required: false })
-  description?: string;
 
   @ApiProperty({ required: false, description: "Number of members in the project" })
   numMembers?: number
@@ -52,7 +53,6 @@ export class ProjectDto extends BaseProjectDto {
   fromProjectEntity(project: ProjectEntity) {
     super.fromProjectEntity(project);
 
-    this.description = project.description;
     this.versions = project.releases?.length;
     this.numMembers = project.memberProject.length;
 
@@ -108,4 +108,9 @@ export class CreateProjectDto {
   description: string;
 
   username: string;
+}
+
+export class EditProjectDto extends PartialType(CreateProjectDto) {
+  projectIdentifier: string | number;
+  projectId: number;
 }
