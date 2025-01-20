@@ -16,7 +16,8 @@ import {
   CreateProjectTokenDto,
   UpdateProjectTokenDto,
   DetailedProjectDto,
-  EditProjectDto
+  EditProjectDto,
+  ProjectMemberContextDto
 } from '@app/common/dto/project-management';
 import { OidcService, UserSearchDto } from '@app/common/oidc/oidc.interface';
 import { PaginatedResultDto } from '@app/common/dto/pagination.dto';
@@ -78,15 +79,25 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   }
 
 
-  // TODO pinned and includePinned not implemented
   async getProjects(query: GetProjectsQueryDto, email: string): Promise<PaginatedResultDto<ProjectDto>> {
     this.logger.debug(`Get projects with query: ${JSON.stringify(query)}`)
     const { page = 1 , perPage = 10, pinned, includePinned } = query;
     
+    const pinnedQuery = {pinned: undefined};
+    if (includePinned === false) {
+      pinnedQuery.pinned = false;
+    }
+    if (pinned === true) {
+      pinnedQuery.pinned = true;
+    }
+
     const [projectsId, count] = await this.projectRepo.findAndCount({
       select: {id: true},
       where: {
-        memberProject: {member: {email: email}},
+        memberProject: {
+          member: {email: email},
+          ...pinnedQuery
+        },
       }
     });
 
@@ -100,7 +111,12 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       take: perPage,
     })
     
-    const projects = projectsEntities.map(project => new ProjectDto().fromProjectEntity(project));
+    const projects = projectsEntities.map(project => {
+      const dto = new ProjectDto().fromProjectEntity(project)
+      const member = project.memberProject.find(mp => mp.member.email === email);
+      dto.memberContext = new ProjectMemberContextDto().fromMemberProjectEntity(member);
+      return dto
+    });
 
     return {
       data: projects,
@@ -461,7 +477,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     return project
   }
 
-  async getProject(params: ProjectIdentifierParams): Promise<DetailedProjectDto> { 
+  async getProject(params: ProjectIdentifierParams, email: string): Promise<DetailedProjectDto> { 
     const project = await this.projectRepo.findOne({
       where: {id: params.projectId},
       relations: {memberProject: {member: true}, tokens: true},
@@ -471,7 +487,10 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       throw new NotFoundException(`Project: '${params.projectId}' not found`);
     }
 
-    return new DetailedProjectDto().fromProjectEntity(project);
+    const dto = new DetailedProjectDto().fromProjectEntity(project);
+    const member = project.memberProject.find(mp => mp.member.email === email);
+    dto.memberContext = new ProjectMemberContextDto().fromMemberProjectEntity(member);
+    return dto
   }
 
 

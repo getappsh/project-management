@@ -113,8 +113,8 @@ export class ProjectManagementController {
 
   @ValidateProjectUserAccess()
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_BY_IDENTIFIER)
-  getProject(@RpcPayload() params: ProjectIdentifierParams): Promise<DetailedProjectDto> {
-    return this.projectManagementService.getProject(params);
+  getProject(@RpcPayload() params: ProjectIdentifierParams, @AuthUser("email") authEmail: string): Promise<DetailedProjectDto> {
+    return this.projectManagementService.getProject(params, authEmail);
   }
 
 
