@@ -1,5 +1,5 @@
 import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { IsBoolean, IsInt, IsOptional, IsPositive, IsString } from 'class-validator';
 
 export class GetProjectsQueryDto {
@@ -9,7 +9,7 @@ export class GetProjectsQueryDto {
   })
   @IsOptional()
   @IsBoolean()
-  @Type(() => Boolean)
+  @Transform(({ value} ) => value === 'true')
   pinned?: boolean;
 
   @ApiPropertyOptional({
@@ -18,7 +18,7 @@ export class GetProjectsQueryDto {
   })
   @IsOptional()
   @IsBoolean()
-  @Type(() => Boolean)
+  @Transform(({ value} ) => value === 'true')
   includePinned?: boolean;
 
   @ApiPropertyOptional({

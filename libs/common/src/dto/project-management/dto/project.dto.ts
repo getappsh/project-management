@@ -1,10 +1,12 @@
 import { ApiProperty, PartialType } from "@nestjs/swagger";
 import { MemberResDto } from "./member-project-res.dto";
-import { ProjectEntity, RoleInProject } from "@app/common/database/entities";
+import { MemberProjectEntity, ProjectEntity, RoleInProject } from "@app/common/database/entities";
 import { IsString, IsNotEmpty, IsOptional } from "class-validator";
 import { IsValidStringFor } from "@app/common/validators";
 import { Pattern } from "@app/common/validators/regex.validator";
 import { ProjectTokenDto } from "./project-token.dto";
+import { ProjectMemberPreferencesDto } from "./project-member.dto";
+
 
 export class BaseProjectDto {
 
@@ -30,6 +32,20 @@ export class BaseProjectDto {
   
 }
 
+export class ProjectMemberContextDto {
+  @ApiProperty({ enum: RoleInProject })
+  role?: RoleInProject
+
+  @ApiProperty()
+  preferences: ProjectMemberPreferencesDto
+
+  fromMemberProjectEntity(memberProject: MemberProjectEntity) {
+    this.role = memberProject.role;
+    this.preferences = ProjectMemberPreferencesDto.fromMemberEntity(memberProject);
+    return this;
+  }
+}
+
 export class ProjectDto extends BaseProjectDto {
 
   @ApiProperty({ description: 'Owner of the project' })
@@ -50,13 +66,16 @@ export class ProjectDto extends BaseProjectDto {
   @ApiProperty({required: false, description: 'Upcoming release stage' })
   upcomingReleaseStage?: string;
 
+  @ApiProperty({ required: false, type: ProjectMemberContextDto, description: 'Current member context' })
+  memberContext?: ProjectMemberContextDto
+
   fromProjectEntity(project: ProjectEntity) {
     super.fromProjectEntity(project);
 
     this.versions = project.releases?.length;
     this.numMembers = project.memberProject.length;
 
-    const ownerEntity =project.memberProject?.find(mp => mp.role === RoleInProject.PROJECT_OWNER);
+    const ownerEntity = project.memberProject?.find(mp => mp.role === RoleInProject.PROJECT_OWNER);
     if(ownerEntity){
       this.owner = new MemberResDto().fromMemberProjectEntity(ownerEntity)?.getName();
     }
