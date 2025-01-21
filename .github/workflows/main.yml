@@ -73,7 +73,7 @@ jobs:
           context: .
           tags: ${{ secrets.REGISTRY_URL }}/getapp-dev/project-management:${{ needs.calculate_new_tag.outputs.tag }}
           push: true
-          build-args: project-management_version_tag=${{ needs.calculate_new_tag.outputs.tag }}
+          build-args: project_version_tag=${{ needs.calculate_new_tag.outputs.tag }}
           
   upload-to-server:
     needs: 
