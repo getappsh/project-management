@@ -28,7 +28,7 @@ export const UploadTopics = {
 } as const
 
 export const UploadTopicsEmit = {
-    PROJECT_REGULATION_DELETED: `getapp-upload.project-regulation-deleted${region}`,
+    PROJECT_REGULATION_CHANGED: `getapp-upload.project-regulation-changed${region}`,
 }
 
 export const DeliveryTopics = {

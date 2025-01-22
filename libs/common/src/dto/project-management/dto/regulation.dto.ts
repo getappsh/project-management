@@ -134,3 +134,20 @@ export class RegulationParams extends ProjectIdentifierParams{
         return JSON.stringify(this);
     }
 }
+
+
+export enum RegulationChangedEventType {
+    CREATED = 'created',
+    UPDATED = 'updated',
+    DELETED = 'deleted'
+}
+export class RegulationChangedEvent{
+
+    projectId: number;
+
+    regulation: string;
+
+    type: RegulationChangedEventType;
+
+}
+
