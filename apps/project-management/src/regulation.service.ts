@@ -1,5 +1,5 @@
 import { RegulationEntity, RegulationTypeEntity, UploadVersionEntity, ProjectEntity } from "@app/common/database/entities";
-import { CreateRegulationDto, RegulationDto, RegulationParams, RegulationTypeDto, UpdateRegulationDto } from "@app/common/dto/project-management";
+import { CreateRegulationDto, RegulationChangedEvent, RegulationChangedEventType, RegulationDto, RegulationParams, RegulationTypeDto, UpdateRegulationDto } from "@app/common/dto/project-management";
 import { MicroserviceClient, MicroserviceName } from "@app/common/microservice-client";
 import { UploadTopicsEmit } from "@app/common/microservice-client/topics";
 import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
@@ -66,6 +66,8 @@ export class RegulationService {
 
     try {
       const result = await this.regulationRepo.save(newRegulation);
+      this.sendRegulationChangedEvent({ type: RegulationChangedEventType.CREATED, projectId: regulation.projectId, regulation: regulation.name });
+
       return new RegulationDto().fromRegulationEntity(result);
     }catch (err) {
       if (err.code == '23505') {
@@ -132,15 +134,18 @@ export class RegulationService {
       throw new NotFoundException(`Regulation ${params.regulation} for Project ID ${params.projectId} not found`);
     }
 
-    lastValueFrom(this.uploadClient.emit(UploadTopicsEmit.PROJECT_REGULATION_DELETED, params))
-      .then(() => this.logger.debug(`Sent regulation deleted event to upload service, projectId: ${params.projectId}, regulation: ${params.regulation}`))
-      .catch(err => this.logger.error(`Error sending regulation deleted event: ${params}, error: ${err}`));
+    this.sendRegulationChangedEvent({ type: RegulationChangedEventType.DELETED, ...params})
 
     return 'Regulation deleted';
   }
 
 
 
+  private async sendRegulationChangedEvent(event: RegulationChangedEvent) {
+    await lastValueFrom(this.uploadClient.emit(UploadTopicsEmit.PROJECT_REGULATION_CHANGED, event))
+      .then(() => this.logger.debug(`Sent to upload service regulation changed event: ${JSON.stringify(event)} `))
+      .catch(err => this.logger.error(`Error sending regulation changed event: ${JSON.stringify(event)}, error: ${err}`));
+  }
 
   private validateConfig(regulation: RegulationEntity) {
     switch (regulation.type.name) {
