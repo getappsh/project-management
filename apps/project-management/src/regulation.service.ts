@@ -1,7 +1,10 @@
 import { RegulationEntity, RegulationTypeEntity, UploadVersionEntity, ProjectEntity } from "@app/common/database/entities";
 import { CreateRegulationDto, RegulationDto, RegulationParams, RegulationTypeDto, UpdateRegulationDto } from "@app/common/dto/project-management";
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { MicroserviceClient, MicroserviceName } from "@app/common/microservice-client";
+import { UploadTopicsEmit } from "@app/common/microservice-client/topics";
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
+import { lastValueFrom } from "rxjs";
 import { Repository } from "typeorm";
 
 @Injectable()
@@ -12,6 +15,8 @@ export class RegulationService {
     @InjectRepository(RegulationEntity) private readonly regulationRepo: Repository<RegulationEntity>,
     @InjectRepository(RegulationTypeEntity) private readonly regulationTypeRepo: Repository<RegulationTypeEntity>,
     @InjectRepository(ProjectEntity) private readonly projectRepo: Repository<ProjectEntity>,
+    @Inject(MicroserviceName.UPLOAD_SERVICE) private readonly uploadClient: MicroserviceClient,
+    
   ) { }
 
 
@@ -126,6 +131,11 @@ export class RegulationService {
     if (affected == 0) {
       throw new NotFoundException(`Regulation with ID ${params.regulationId} for Project ID ${params.projectId} not found`);
     }
+
+    lastValueFrom(this.uploadClient.emit(UploadTopicsEmit.PROJECT_REGULATION_DELETED, params))
+      .then(() => this.logger.debug(`Sent regulation deleted event to upload service, projectId: ${params.projectId}, regulationId: ${params.regulationId}`))
+      .catch(err => this.logger.error(`Error sending regulation deleted event: ${params}, error: ${err}`));
+
     return 'Regulation deleted';
   }
 
