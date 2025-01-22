@@ -37,6 +37,12 @@ export class ReleaseEntity {
   @OneToMany(() => ReleaseArtifactEntity, (artifact) => artifact.release)
   artifacts: ReleaseArtifactEntity[];
 
+  @Column({ name: 'required_regulations_count', type: 'int', default: 0 })
+  requiredRegulationsCount: number;
+
+  @Column({ name: 'compliant_regulations_count', type: 'int', default: 0 })
+  compliantRegulationsCount: number;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

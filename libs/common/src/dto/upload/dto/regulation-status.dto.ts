@@ -57,6 +57,20 @@ export class  SetRegulationCompliancyDto {
   isCompliant: boolean
 }
 
+export class RegulationSnapshotDto{
+
+  @ApiProperty({ description: 'Name of the regulation' })
+  name: string
+
+  @ApiProperty({required: false, description: 'Description of the regulation' })
+  description?: string
+
+  @ApiProperty({ description: 'Configuration of the regulation', required: false })
+  config?: string;
+
+  @ApiProperty({ description: 'Type Id of the regulation'})
+  typeId: number
+}
 
 export class RegulationStatusDto  extends RegulationStatusParams{
 
@@ -75,16 +89,26 @@ export class RegulationStatusDto  extends RegulationStatusParams{
   @ApiProperty({ description: 'Update date of the regulation status' })
   updatedAt: Date
 
+  @ApiProperty({required: false, description: 'Regulation snapshot', type: RegulationSnapshotDto})
+  regulationSnapshot?: RegulationSnapshotDto
+
   fromRegulationStatusEntity(regulationStatus: RegulationStatusEntity) {
     this.value = regulationStatus.value
     this.reportDetails = regulationStatus.reportDetails
     this.isCompliant = regulationStatus.isCompliant
     this.version = regulationStatus?.version?.version
-    this.regulation = regulationStatus?.regulation?.name
+    this.regulation = regulationStatus?.regulation?.name ?? regulationStatus.regulationSnapshot?.name
     this.projectId = regulationStatus?.regulation?.project?.id
     this.createdAt = regulationStatus.createdAt
     this.updatedAt = regulationStatus.updatedAt
 
+    if (!regulationStatus.regulation && regulationStatus.regulationSnapshot) {
+      this.regulationSnapshot = new RegulationSnapshotDto()
+      this.regulationSnapshot.name = regulationStatus.regulationSnapshot?.name
+      this.regulationSnapshot.description = regulationStatus.regulationSnapshot?.description
+      this.regulationSnapshot.config = regulationStatus.regulationSnapshot?.config
+      this.regulationSnapshot.typeId = regulationStatus.regulationSnapshot?.typeId
+    }
     return this
 
   }

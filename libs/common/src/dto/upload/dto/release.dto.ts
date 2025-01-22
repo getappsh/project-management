@@ -38,38 +38,42 @@ export class SetReleaseDto {
 
 }
 
-export class ReleaseDto{
+export class ReleaseDto {
+  @ApiProperty()
+  id: string;
 
   @ApiProperty()
-  id: string
+  version: string;
+
+  @ApiProperty({ required: false })
+  projectId?: number;
 
   @ApiProperty()
-  version: string
-
-  @ApiProperty({required: false})
-  projectId?: number
-  
-  @ApiProperty()
-  name: string
-  
-  @ApiProperty()
-  releaseNotes: string
-  
-  @ApiProperty()
-  metadata: Record<string, any>
-  
-  @ApiProperty()
-  status: ReleaseStatusEnum
-  
-  @ApiProperty({type: ReleaseArtifactDto, isArray: true, required: false})
-  artifacts?: ReleaseArtifactDto[]
+  name: string;
 
   @ApiProperty()
-  createdAt: Date
+  releaseNotes: string;
 
   @ApiProperty()
-  updatedAt: Date
+  metadata: Record<string, any>;
 
+  @ApiProperty({ type: 'enum', enum: ReleaseStatusEnum })
+  status: ReleaseStatusEnum;
+
+  @ApiProperty({ type: ReleaseArtifactDto, isArray: true, required: false })
+  artifacts?: ReleaseArtifactDto[];
+
+  @ApiProperty()
+  createdAt: Date;
+
+  @ApiProperty()
+  updatedAt: Date;
+
+  @ApiProperty({ description: 'Total number of required regulations' })
+  requiredRegulationsCount: number;
+
+  @ApiProperty({ description: 'Total number of compliant regulations' })
+  compliantRegulationsCount: number;
 
   static fromEntity(release: ReleaseEntity): ReleaseDto {
     const dto = new ReleaseDto();
@@ -83,7 +87,9 @@ export class ReleaseDto{
     dto.artifacts = release?.artifacts?.map((artifact) => ReleaseArtifactDto.fromEntity(artifact));
     dto.createdAt = release.createdAt;
     dto.updatedAt = release.updatedAt;
-    return dto
+    dto.requiredRegulationsCount = release.requiredRegulationsCount;
+    dto.compliantRegulationsCount = release.compliantRegulationsCount;
+    return dto;
   }
 }
 
