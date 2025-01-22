@@ -153,9 +153,9 @@ export class ProjectManagementController {
   }
 
   @ValidateProjectAnyAccess()
-  @MessagePattern(ProjectManagementTopics.GET_PROJECT_REGULATION_BY_ID)
-  getRegulationById(@RpcPayload() params: RegulationParams) {
-    return this.regulationService.getRegulationById(params)
+  @MessagePattern(ProjectManagementTopics.GET_PROJECT_REGULATION_BY_NAME)
+  getRegulationByName(@RpcPayload() params: RegulationParams) {
+    return this.regulationService.getRegulationByName(params)
   }
 
   @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)

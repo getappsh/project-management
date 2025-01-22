@@ -76,25 +76,25 @@ export class RegulationService {
 
   }
 
-  async updateRegulation(regulation: UpdateRegulationDto): Promise<RegulationDto> {
+  async updateRegulation(dto: UpdateRegulationDto): Promise<RegulationDto> {
     this.logger.log('Update regulation');
 
-    const currentRegulation = await this.regulationRepo.findOne({ where: { id: regulation.regulationId, project: { id: regulation.projectId } } });
+    const currentRegulation = await this.regulationRepo.findOne({ where: { name: dto.regulation, project: { id: dto.projectId } } });
     if (!currentRegulation) {
-      throw new NotFoundException(`Regulation with ID ${regulation.regulationId} for Project ID ${regulation.projectId} not found`);
+      throw new NotFoundException(`Regulation ${dto.regulation} for Project ID ${dto.projectId} not found`);
     }
 
     const regulationEntity = new RegulationEntity();
-    regulationEntity.name = regulation?.name;
-    regulationEntity.description = regulation?.description;
-    regulationEntity.config = regulation?.config;
-    regulationEntity.order = regulation?.order;
-    regulationEntity.displayName = regulation?.displayName;
+    regulationEntity.name = dto?.name;
+    regulationEntity.description = dto?.description;
+    regulationEntity.config = dto?.config;
+    regulationEntity.order = dto?.order;
+    regulationEntity.displayName = dto?.displayName;
 
-    if (regulation?.typeId) {
-      const regulationType = await this.regulationTypeRepo.findOne({ where: { id: regulation.typeId } });
+    if (dto?.typeId) {
+      const regulationType = await this.regulationTypeRepo.findOne({ where: { id: dto.typeId } });
       if (!regulationType) {
-        throw new NotFoundException(`Regulation type with id ${regulation.typeId} not found`);
+        throw new NotFoundException(`Regulation type with id ${dto.typeId} not found`);
       }
       regulationEntity.type = regulationType;
     }
@@ -108,18 +108,18 @@ export class RegulationService {
       return new RegulationDto().fromRegulationEntity(result);
     }catch (err) {
       if (err.code == '23505') {
-        throw new ConflictException(`Regulation with name '${regulation.name}' already exists`);
+        throw new ConflictException(`Regulation with name '${dto.name}' already exists`);
       }
       throw err
     }
   }
 
 
-  async getRegulationById(params: RegulationParams): Promise<RegulationDto> {
-    this.logger.log('Get regulation by id');
-    const regulation = await this.regulationRepo.findOne({ where: { id: params.regulationId, project: { id: params.projectId } }, relations: { project: true }, select: { project: { id: true } } });
+  async getRegulationByName(params: RegulationParams): Promise<RegulationDto> {
+    this.logger.log(`Get regulation by name: ${params.regulation}`);
+    const regulation = await this.regulationRepo.findOne({ where: { name: params.regulation, project: { id: params.projectId } }, relations: { project: true }, select: { project: { id: true } } });
     if (!regulation) {
-      throw new NotFoundException(`Regulation with ID ${params.regulationId} for Project ID ${params.projectId} not found`);
+      throw new NotFoundException(`Regulation ${params.regulation} for Project ID ${params.projectId} not found`);
     }
     return new RegulationDto().fromRegulationEntity(regulation);
   }
@@ -127,13 +127,13 @@ export class RegulationService {
   async deleteRegulation(params: RegulationParams): Promise<string> {
     this.logger.log('Delete regulation');
 
-    let { raw, affected } = await this.regulationRepo.delete({ id: params.regulationId, project: { id: params.projectId } });
+    let { raw, affected } = await this.regulationRepo.delete({ name: params.regulation, project: { id: params.projectId } });
     if (affected == 0) {
-      throw new NotFoundException(`Regulation with ID ${params.regulationId} for Project ID ${params.projectId} not found`);
+      throw new NotFoundException(`Regulation ${params.regulation} for Project ID ${params.projectId} not found`);
     }
 
     lastValueFrom(this.uploadClient.emit(UploadTopicsEmit.PROJECT_REGULATION_DELETED, params))
-      .then(() => this.logger.debug(`Sent regulation deleted event to upload service, projectId: ${params.projectId}, regulationId: ${params.regulationId}`))
+      .then(() => this.logger.debug(`Sent regulation deleted event to upload service, projectId: ${params.projectId}, regulation: ${params.regulation}`))
       .catch(err => this.logger.error(`Error sending regulation deleted event: ${params}, error: ${err}`));
 
     return 'Regulation deleted';
