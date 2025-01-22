@@ -8,9 +8,6 @@ import { Pattern } from '@app/common/validators/regex.validator';
 import { ProjectIdentifierParams } from './project-identifier.dto';
 
 export class RegulationDto {
-    @ApiProperty({ description: 'ID of the regulation' })
-    regulationId: number;
-
     @ApiProperty({ description: 'Name of the regulation' })
     name: string;
 
@@ -33,7 +30,6 @@ export class RegulationDto {
     order: number;
 
     fromRegulationEntity(regulation: RegulationEntity) {
-        this.regulationId = regulation.id;
         this.name = regulation.name;
         this.displayName = regulation?.displayName;
         this.description = regulation.description;
@@ -93,7 +89,7 @@ export class UpdateRegulationDto {
 
     projectId: number;
 
-    regulationId: number;
+    regulation: string;
 
     @ApiProperty({ description: 'Name of the regulation', required: false })
     @IsOptional()
@@ -129,10 +125,10 @@ export class UpdateRegulationDto {
 
 export class RegulationParams extends ProjectIdentifierParams{
 
-    @ApiProperty({ description: 'ID of the regulation' })
-    @IsNumber()
-    @Type(() => Number)
-    regulationId: number;
+    @ApiProperty({ description: 'Name of the regulation' })
+    @IsString()
+    @Type(() => String)
+    regulation: string;
 
     toString() {
         return JSON.stringify(this);

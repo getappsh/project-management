@@ -92,7 +92,7 @@ export const ProjectManagementTopics = {
 
     GET_REGULATION_TYPES: `getapp-project-management.get-regulation-types${region}`,
     GET_PROJECT_REGULATIONS: `getapp-project-management.get-project-regulations${region}`,
-    GET_PROJECT_REGULATION_BY_ID: `getapp-project-management.get-project-regulation-by-id${region}`,
+    GET_PROJECT_REGULATION_BY_NAME: `getapp-project-management.get-project-regulation-by-name${region}`,
     CREATE_PROJECT_REGULATION: `getapp-project-management.create-project-regulation${region}`,
     UPDATE_PROJECT_REGULATION: `getapp-project-management.update-project-regulation${region}`,
     DELETE_PROJECT_REGULATION: `getapp-project-management.delete-project-regulation${region}`,

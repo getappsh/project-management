@@ -21,6 +21,7 @@ export const ApiOkResponsePaginated = <DataDto extends Type<unknown>>(dataDto: D
     ApiExtraModels(PaginatedResultDto, dataDto),
     ApiOkResponse({
       schema: {
+        title: `Paginated${dataDto.name}`,
         allOf: [
           { $ref: getSchemaPath(PaginatedResultDto) },
           {

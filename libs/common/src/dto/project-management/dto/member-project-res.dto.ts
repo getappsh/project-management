@@ -4,7 +4,7 @@ import { ProjectDto } from "./project.dto";
 
 export class MemberResDto {
 
-  @ApiProperty({required: false})
+  @ApiProperty({required: true})
   id: number;
 
   @ApiProperty({required: false})
@@ -13,13 +13,13 @@ export class MemberResDto {
   @ApiProperty({required: false})
   lastName: string;
 
-  @ApiProperty({required: false})
+  @ApiProperty({required: true})
   email: string;
 
   @ApiProperty({ enum: RoleInProject })
   role: string;
 
-  @ApiProperty({required: false, enum: MemberProjectStatusEnum})
+  @ApiProperty({required: true, enum: MemberProjectStatusEnum})
   status: MemberProjectStatusEnum
 
   @ApiProperty({required: false, default:-1})
