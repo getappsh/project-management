@@ -289,10 +289,8 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     this.logger.debug(`Add member to project: ${projectMember.email}`)
 
     let member = await this.getOrCreateMember(projectMember.email, true).catch(error => {
-      this.logger.error(`Failed to add member ${projectMember.email} to project ${projectMember.projectId}, Err: ${error}`);
+      throw new InternalServerErrorException(`Failed to add member ${projectMember.email} to project ${projectMember.projectId}, Err: ${error}`);
     });
-
-    if (!member) return;
 
     this.logger.debug(`Member: ${member}`)
 
