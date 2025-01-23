@@ -17,7 +17,9 @@ import {
   UpdateProjectTokenDto,
   DetailedProjectDto,
   EditProjectDto,
-  ProjectMemberContextDto
+  ProjectMemberContextDto,
+  ProjectReleasesChangedEvent,
+  ProjectSummaryDto
 } from '@app/common/dto/project-management';
 import { OidcService, UserSearchDto } from '@app/common/oidc/oidc.interface';
 import { PaginatedResultDto } from '@app/common/dto/pagination.dto';
@@ -630,6 +632,20 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     const payload = {projectId, projectName, name, neverExpires}
     const expiresIn = neverExpires ? '100y' : Math.floor((expirationDate.getTime() - Date.now()) / 1000)
     return this.jwtService.sign({ data: payload}, {expiresIn: expiresIn});
+  }
+
+  async onProjectReleasesChanged(event: ProjectReleasesChangedEvent){
+    this.logger.debug(`onProjectReleasesChanged: for project: ${event.projectId}`);
+    try {
+          // TODO make this more efficient
+      const project = await this.getProjectEntity(event.projectId);
+      project.projectSummary['latestRelease'] = event?.latestRelease;
+      project.projectSummary['upcomingRelease'] = event?.upcomingRelease;
+      await this.projectRepo.save(project).catch(err => this.logger.error(`Error saving release changed event: ${JSON.stringify(event)}, error: ${err}`));
+    }catch(err) {
+      this.logger.error(`Error saving release changed event: ${JSON.stringify(event)}, error: ${err}`);
+    }
+    
   }
 
 

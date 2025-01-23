@@ -1,16 +1,15 @@
-import { ProjectManagementTopics } from '@app/common/microservice-client/topics';
+import { ProjectManagementTopics, ProjectManagementTopicsEmit } from '@app/common/microservice-client/topics';
 import { Controller, Logger, UseInterceptors } from '@nestjs/common';
-import { MessagePattern } from '@nestjs/microservices';
+import { EventPattern, MessagePattern } from '@nestjs/microservices';
 import { ProjectManagementService } from './project-management.service';
 import { DeviceResDto } from '@app/common/dto/project-management/dto/device-res.dto';
 import {
   EditProjectMemberDto, CreateProjectDto, AddMemberToProjectDto,
-  ProjectTokenDto, MemberResDto, MemberProjectsResDto,
+  MemberResDto, MemberProjectsResDto,
   CreateRegulationDto,
   UpdateRegulationDto,
   RegulationParams,
   ProjectMemberParams,
-  ProjectDto,
   ProjectIdentifierParams,
   SearchProjectsQueryDto,
   GetProjectsQueryDto,
@@ -27,8 +26,8 @@ import { AuthUser } from './utils/auth-user.decorator';
 import { RoleInProject } from '@app/common/database/entities';
 import { RegulationService } from './regulation.service';
 import { UserSearchDto } from '@app/common/oidc/oidc.interface';
-import { ValidateProjectAnyAccess, ValidateProjectTokenAccess, ValidateProjectUserAccess } from '@app/common/utils/project-access';
-import { Validate } from 'class-validator';
+import { ValidateProjectAnyAccess, ValidateProjectUserAccess } from '@app/common/utils/project-access';
+import { ProjectReleasesChangedEvent } from '@app/common/dto/project-management';
 
 @Controller()
 @UseInterceptors(UserContextInterceptor)
@@ -213,6 +212,11 @@ export class ProjectManagementController {
     const version = this.readImageVersion()
     this.logger.log(`Device service - Health checking, Version: ${version}`)
     return "Project-Management is running successfully. Version: " + version
+  }
+
+  @EventPattern(ProjectManagementTopicsEmit.PROJECT_RELEASES_CHANGED)
+  onProjectReleasesChanged(@RpcPayload() event: ProjectReleasesChangedEvent) {
+    this.projectManagementService.onProjectReleasesChanged(event)
   }
 
   private readImageVersion() {
