@@ -1,9 +1,9 @@
 import { ReleaseEntity, ReleaseStatusEnum } from "@app/common/database/entities";
 import { ApiProperty } from "@nestjs/swagger";
-import { IsNotEmpty, IsOptional, IsSemVer, IsString, IsBoolean, IsNumber} from "class-validator";
+import { IsNotEmpty, IsOptional, IsSemVer, IsString, IsBoolean} from "class-validator";
 import { ReleaseArtifactDto } from "./release-artifact.dto";
 import { Type } from "class-transformer";
-import { ProjectIdentifierParams } from "../../project-management";
+import { ProjectIdentifierParams } from "@app/common/dto/project-management";
 
 export class SetReleaseDto {
   
@@ -92,7 +92,6 @@ export class ReleaseDto {
     return dto;
   }
 }
-
 
 export class ReleaseParams extends ProjectIdentifierParams{
   @ApiProperty()

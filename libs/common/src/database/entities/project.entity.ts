@@ -26,6 +26,9 @@ export class ProjectEntity extends BaseEntity{
 
     @OneToMany(() => ReleaseEntity, release => release.project)
     releases: ReleaseEntity[];
+    
+    @Column({ type: "jsonb", nullable: true, name: "project_summary", default: {} })
+    projectSummary: Record<string, any>;
 
     toString(){
         return JSON.stringify(this)

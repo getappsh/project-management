@@ -6,6 +6,7 @@ import { IsValidStringFor } from "@app/common/validators";
 import { Pattern } from "@app/common/validators/regex.validator";
 import { ProjectTokenDto } from "./project-token.dto";
 import { ProjectMemberPreferencesDto } from "./project-member.dto";
+import { ReleaseDto } from "../../upload";
 
 
 export class BaseProjectDto {
@@ -46,6 +47,53 @@ export class ProjectMemberContextDto {
   }
 }
 
+export class MinimalReleaseDto {
+  @ApiProperty()
+  id: string;
+  
+  @ApiProperty()
+  version: string;
+  
+  @ApiProperty({required: false})
+  name?: string;
+ 
+  @ApiProperty()
+  requiredRegulationsCount: number;
+  
+  @ApiProperty()
+  compliantRegulationsCount: number;
+
+  static fromReleaseDto(release: ReleaseDto) {
+    const dto = new MinimalReleaseDto();
+    dto.id = release.id;
+    dto.version = release.version;
+    dto.name = release.name;
+    dto.requiredRegulationsCount = release.requiredRegulationsCount;
+    dto.compliantRegulationsCount = release.compliantRegulationsCount;
+    return dto;
+  }
+}
+
+
+export class ProjectReleasesChangedEvent {
+
+  projectId: number;
+
+  latestRelease?: MinimalReleaseDto;
+
+  upcomingRelease?: MinimalReleaseDto;
+}
+
+
+export class ProjectSummaryDto{ 
+
+  @ApiProperty({ required: false, description: 'Latest release of the project' })
+  latestRelease?: MinimalReleaseDto
+
+  @ApiProperty({ required: false, description: 'Upcoming release of the project' })
+  upcomingRelease?: MinimalReleaseDto
+}
+
 export class ProjectDto extends BaseProjectDto {
 
   @ApiProperty({ description: 'Owner of the project' })
@@ -57,23 +105,18 @@ export class ProjectDto extends BaseProjectDto {
   @ApiProperty({ description: 'Number of versions available for the project', example: 5 })
   versions: number;
 
-  @ApiProperty({ required: false, description: 'Latest release of the project' })
-  latestRelease?: string;
-
-  @ApiProperty({ required: false,  description: 'Upcoming release' })
-  upcomingRelease?: string;
-
-  @ApiProperty({required: false, description: 'Upcoming release stage' })
-  upcomingReleaseStage?: string;
-
   @ApiProperty({ required: false, type: ProjectMemberContextDto, description: 'Current member context' })
   memberContext?: ProjectMemberContextDto
+
+  @ApiProperty({ required: false, type: ProjectSummaryDto, description: 'Summary of the project' })
+  summary?: ProjectSummaryDto
 
   fromProjectEntity(project: ProjectEntity) {
     super.fromProjectEntity(project);
 
     this.versions = project.releases?.length;
-    this.numMembers = project.memberProject.length;
+    this.numMembers = project.memberProject?.length;
+    this.summary = project.projectSummary;
 
     const ownerEntity = project.memberProject?.find(mp => mp.role === RoleInProject.PROJECT_OWNER);
     if(ownerEntity){

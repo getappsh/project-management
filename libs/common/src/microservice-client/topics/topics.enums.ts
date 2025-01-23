@@ -107,6 +107,10 @@ export const ProjectManagementTopics = {
     CHECK_HEALTH: `getapp-project-management.check-health${region}`
 } as const
 
+export const ProjectManagementTopicsEmit = {
+    PROJECT_RELEASES_CHANGED: `getapp-project-management.project-releases-changed${region}`,
+}
+
 export const GetMapTopics = {
     // Discovery
     GET_RECORDS_COUNT: `getapp-map.discovery.get-records-count-of-device${region}`,
