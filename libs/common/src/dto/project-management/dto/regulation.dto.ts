@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, PartialType } from '@nestjs/swagger';
 import { RegulationEntity } from '@app/common/database/entities';
 import { RegulationTypeDto } from './regulation-type.dto';
 import { IsNotEmpty, IsString, IsOptional, IsNumber } from 'class-validator';
@@ -83,44 +83,18 @@ export class CreateRegulationDto {
 }
 
 
-export class UpdateRegulationDto {
-
-    projectIdentifier: string | number;
-
-    projectId: number;
-
+export class UpdateRegulationDto extends PartialType(CreateRegulationDto) {
     regulation: string;
-
-    @ApiProperty({ description: 'Name of the regulation', required: false })
-    @IsOptional()
-    @IsString()
-    @IsValidStringFor(Pattern.SINGLE_WORD)
-    name?: string;
-
-    @ApiProperty({required: false, description: 'Display name of the regulation' })
-    @IsString()
-    displayName?: string;
-
-    @ApiProperty({ description: 'Description of the regulation', required: false })
-    @IsOptional()
-    @IsString()
-    description?: string;
-
-    @ApiProperty({ description: 'ID of the regulation type', required: false })
-    @IsOptional()
-    @IsNumber()
-    typeId?: number;
-
-    @ApiProperty({ description: 'Configuration of the regulation', required: false })
-    @IsOptional()
-    @IsString()
-    config?: string;
-
-    @ApiProperty({ description: 'Order of the regulation', required: false })
-    @IsOptional()
-    @IsNumber()
-    order?: number;
 }
+
+
+export class UpdateOneOfManyRegulationDto extends PartialType(CreateRegulationDto) {
+    @ApiProperty({ description: 'Identifier (name) of the regulation' })
+    @IsString()
+    @Type(() => String)
+    regulation: string;   
+}
+
 
 
 export class RegulationParams extends ProjectIdentifierParams{
