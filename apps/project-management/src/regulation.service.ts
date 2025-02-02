@@ -1,11 +1,11 @@
 import { RegulationEntity, RegulationTypeEntity, UploadVersionEntity, ProjectEntity } from "@app/common/database/entities";
-import { CreateRegulationDto, RegulationChangedEvent, RegulationChangedEventType, RegulationDto, RegulationParams, RegulationTypeDto, UpdateRegulationDto } from "@app/common/dto/project-management";
+import { CreateRegulationDto, RegulationChangedEvent, RegulationChangedEventType, RegulationDto, RegulationParams, RegulationTypeDto, UpdateOneOfManyRegulationDto, UpdateRegulationDto } from "@app/common/dto/project-management";
 import { MicroserviceClient, MicroserviceName } from "@app/common/microservice-client";
 import { UploadTopicsEmit } from "@app/common/microservice-client/topics";
 import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { lastValueFrom } from "rxjs";
-import { Repository } from "typeorm";
+import { In, Repository } from "typeorm";
 
 @Injectable()
 export class RegulationService {
@@ -77,6 +77,41 @@ export class RegulationService {
     }
 
   }
+  async updateRegulations(projectId: number, regulations: UpdateOneOfManyRegulationDto[]): Promise<RegulationDto[]> {
+    this.logger.log('Update regulations');
+    const regulationsEntity = await this.regulationRepo.find({where: { project: { id: projectId }, name: In(regulations.map(r => r.regulation)) }})
+
+    if (regulationsEntity.length != regulations.length) {
+      throw new NotFoundException(`Regulations ${regulations.map(r => r.name).join(', ')} for Project ID ${projectId} not found`);
+    }
+    
+    for (const entity of regulationsEntity) {
+      const regulation = regulations.find(r => r.regulation == entity.name);
+      if (!regulation) {
+        throw new NotFoundException(`Regulation ${entity.name} for Project ID ${projectId} not found`);
+      }
+      entity.name = regulation.name;
+      entity.description = regulation.description;
+      entity.config = regulation.config;
+      entity.order = regulation.order;
+      entity.displayName = regulation.displayName;
+
+      if (regulation.config){
+        this.validateConfig(entity);
+      }
+    }
+
+    try {
+      await this.regulationRepo.save(regulationsEntity)
+      return this.regulationRepo.find({where: { project: { id: projectId }, name: In(regulations.map(r => r.regulation)) }})
+        .then(regulation => regulation.map(r => new RegulationDto().fromRegulationEntity(r)));
+    }catch (err) {
+      if (err.code == '23505') {
+        throw new ConflictException(`Regulation name already exists`);
+      }
+      throw err
+    }
+  }
 
   async updateRegulation(dto: UpdateRegulationDto): Promise<RegulationDto> {
     this.logger.log('Update regulation');
@@ -103,7 +138,10 @@ export class RegulationService {
 
     const updatedRegulation = { ...currentRegulation, ...regulationEntity };
 
-    this.validateConfig(updatedRegulation);
+    if (updatedRegulation.config){
+      this.validateConfig(updatedRegulation);
+    }
+
     
     try {
       const result = await this.regulationRepo.save(updatedRegulation);

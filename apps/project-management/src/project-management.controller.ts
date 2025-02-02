@@ -19,6 +19,7 @@ import {
   DetailedProjectDto,
   EditProjectDto,
   ProjectMemberPreferencesDto,
+  UpdateOneOfManyRegulationDto,
 } from '@app/common/dto/project-management';
 import { RpcPayload, UserContextInterceptor } from '@app/common/microservice-client';
 import * as fs from 'fs';
@@ -162,6 +163,13 @@ export class ProjectManagementController {
   createRegulation(@RpcPayload() regulation: CreateRegulationDto) {
     return this.regulationService.createRegulation(regulation)
   }
+
+  @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
+  @MessagePattern(ProjectManagementTopics.UPDATE_PROJECT_REGULATIONS)
+  updateRegulations(@RpcPayload() dto: {projectId: number, regulations: UpdateOneOfManyRegulationDto[]}) {
+    return this.regulationService.updateRegulations(dto.projectId, dto.regulations)
+  }
+
 
   @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
   @MessagePattern(ProjectManagementTopics.UPDATE_PROJECT_REGULATION)
