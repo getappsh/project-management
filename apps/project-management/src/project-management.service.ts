@@ -662,7 +662,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     this.logger.log(`Find doc with id ${params.id} for project with id ${params.projectId}`);
     const doc = await this.docRepo.findOneBy({id: params.id, project: {id: params.projectId}});
     if (!doc){
-      throw new NotFoundException(`Doc with id ${params.id} not found`)
+      throw new NotFoundException(`Document with id ${params.id} not found`)
     }
     return DocDto.fromDocEntity(doc);
   }
@@ -688,7 +688,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     this.logger.log(`Update doc: ${JSON.stringify(dto)} `);
     const entity = await this.docRepo.findOneBy({id: dto.id, project: {id: dto.projectId}})
     if (!entity){
-      throw new NotFoundException(`Doc with id ${dto.id} not found`);
+      throw new NotFoundException(`Document with id ${dto.id} not found`);
     }
     entity.id = dto.id
     entity.name = dto.name
@@ -711,10 +711,10 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     this.logger.log(`Delete doc with id ${params.id} for project with id ${params.projectId}`);
     const doc = await this.docRepo.findOneBy({id: params.id, project: {id: params.projectId}})
     if (!doc){
-      throw new NotFoundException(`Doc with id ${params.id} not found`);
+      throw new NotFoundException(`Document with id ${params.id} not found`);
     }
     await this.docRepo.remove(doc);
-    return `Doc with id ${doc.id} deleted successfully`;
+    return `Document with id ${params.id} deleted successfully`;
   }
 
 
