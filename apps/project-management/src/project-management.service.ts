@@ -1,4 +1,4 @@
-import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity } from '@app/common/database/entities';
+import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity, DocEntity } from '@app/common/database/entities';
 import { ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -19,7 +19,10 @@ import {
   EditProjectDto,
   ProjectMemberContextDto,
   ProjectReleasesChangedEvent,
-  ProjectSummaryDto
+  CreateDocDto, 
+  DocDto, 
+  DocsParams, 
+  UpdateDocDto 
 } from '@app/common/dto/project-management';
 import { OidcService, UserSearchDto } from '@app/common/oidc/oidc.interface';
 import { PaginatedResultDto } from '@app/common/dto/pagination.dto';
@@ -42,6 +45,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     @InjectRepository(ProjectEntity) private readonly projectRepo: Repository<ProjectEntity>,
     @InjectRepository(ProjectTokenEntity) private readonly tokenRepo: Repository<ProjectTokenEntity>,
     @InjectRepository(DeviceEntity) private readonly deviceRepo: Repository<DeviceEntity>,
+    @InjectRepository(DocEntity) private readonly docRepo: Repository<DocEntity>,
     @Inject("OidcProviderService") private readonly oidcService: OidcService,
     @Inject(MicroserviceName.UPLOAD_SERVICE) private readonly uploadClient: MicroserviceClient,
   ) { }
@@ -646,6 +650,71 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       this.logger.error(`Error saving release changed event: ${JSON.stringify(event)}, error: ${err}`);
     }
     
+  }
+
+  async getDocs(projectId: number): Promise<DocDto[]> {
+    this.logger.log(`Get docs for project with id ${projectId}`);
+    const docs = await this.docRepo.find({where: {project: {id: projectId}}});
+    return docs.map(doc => DocDto.fromDocEntity(doc));
+  }
+
+  async getDocById(params: DocsParams): Promise<DocDto> {
+    this.logger.log(`Find doc with id ${params.id} for project with id ${params.projectId}`);
+    const doc = await this.docRepo.findOneBy({id: params.id, project: {id: params.projectId}});
+    if (!doc){
+      throw new NotFoundException(`Doc with id ${params.id} not found`)
+    }
+    return DocDto.fromDocEntity(doc);
+  }
+
+  async createDoc(dto: CreateDocDto): Promise<DocDto> {
+    this.logger.log(`Create doc for project: ${dto.projectId}, name: ${dto.name}`);
+    const entity = new DocEntity()
+    entity.name = dto.name
+    entity.isUrl = dto.isUrl
+    entity.project = {id: dto.projectId} as ProjectEntity
+
+    if (dto.isUrl) {
+      entity.docUrl = dto.docUrl
+      entity.readme = null
+    }else {
+      entity.docUrl = null
+      entity.readme = dto.readme
+    }
+    return this.docRepo.save(entity).then((doc) => DocDto.fromDocEntity(doc));
+  }
+
+  async updateDoc(dto: UpdateDocDto): Promise<DocDto> {
+    this.logger.log(`Update doc: ${JSON.stringify(dto)} `);
+    const entity = await this.docRepo.findOneBy({id: dto.id, project: {id: dto.projectId}})
+    if (!entity){
+      throw new NotFoundException(`Doc with id ${dto.id} not found`);
+    }
+    entity.id = dto.id
+    entity.name = dto.name
+    entity.isUrl = dto.isUrl ?? entity.isUrl
+    entity.project = {id: dto.projectId} as ProjectEntity
+
+    if (entity.isUrl) {
+      entity.docUrl = dto.docUrl
+      entity.readme = null
+    }else {
+      entity.docUrl = null
+      entity.readme = dto.readme
+    }
+
+    await this.docRepo.save(entity)
+    return this.getDocById(dto);
+  }
+
+  async deleteDoc(params: DocsParams): Promise<string> {
+    this.logger.log(`Delete doc with id ${params.id} for project with id ${params.projectId}`);
+    const doc = await this.docRepo.findOneBy({id: params.id, project: {id: params.projectId}})
+    if (!doc){
+      throw new NotFoundException(`Doc with id ${params.id} not found`);
+    }
+    await this.docRepo.remove(doc);
+    return `Doc with id ${doc.id} deleted successfully`;
   }
 
 

@@ -1,5 +1,5 @@
 import { DatabaseModule, UploadJwtConfigService,  } from '@app/common';
-import { MemberEntity, ProjectEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity } from '@app/common/database/entities';
+import { MemberEntity, ProjectEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity } from '@app/common/database/entities';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -26,7 +26,7 @@ import { MicroserviceModule, MicroserviceName, MicroserviceType } from '@app/com
     TypeOrmModule.forFeature([
       MemberEntity, ProjectEntity, MemberProjectEntity, UploadVersionEntity, 
       RegulationEntity, RegulationTypeEntity,
-      DeviceEntity, ProjectTokenEntity
+      DeviceEntity, ProjectTokenEntity, DocEntity
     ]),
     OidcModule.forRoot(),
     MicroserviceModule.register({

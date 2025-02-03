@@ -20,6 +20,9 @@ import {
   EditProjectDto,
   ProjectMemberPreferencesDto,
   UpdateOneOfManyRegulationDto,
+  CreateDocDto, 
+  DocsParams, 
+  UpdateDocDto
 } from '@app/common/dto/project-management';
 import { RpcPayload, UserContextInterceptor } from '@app/common/microservice-client';
 import * as fs from 'fs';
@@ -225,6 +228,38 @@ export class ProjectManagementController {
   @EventPattern(ProjectManagementTopicsEmit.PROJECT_RELEASES_CHANGED)
   onProjectReleasesChanged(@RpcPayload() event: ProjectReleasesChangedEvent) {
     this.projectManagementService.onProjectReleasesChanged(event)
+  }
+
+
+  // DOCS
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.GET_PROJECT_DOCS)
+  getDocs(@RpcPayload() params: ProjectIdentifierParams) {
+    return this.projectManagementService.getDocs(params.projectId)
+  }
+
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.GET_PROJECT_DOC_BY_ID)
+  getDocById(@RpcPayload() params: DocsParams) {
+    return this.projectManagementService.getDocById(params)
+  }
+
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.CREATE_PROJECT_DOC)
+  createDoc(@RpcPayload() dto: CreateDocDto) {
+    return this.projectManagementService.createDoc(dto)
+  }
+
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.UPDATE_PROJECT_DOC)
+  updateDoc(@RpcPayload() dto: UpdateDocDto) {
+    return this.projectManagementService.updateDoc(dto)
+  }
+
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.DELETE_PROJECT_DOC)
+  deleteDoc(@RpcPayload() params: DocsParams) {
+    return this.projectManagementService.deleteDoc(params)
   }
 
   private readImageVersion() {
