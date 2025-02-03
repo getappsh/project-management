@@ -105,6 +105,13 @@ export const ProjectManagementTopics = {
     UPDATE_PROJECT_TOKEN: `getapp-project-management.update-project-token${region}`,
     DELETE_PROJECT_TOKEN: `getapp-project-management.delete-project-token${region}`,
 
+    // Docs
+    GET_PROJECT_DOCS: `getapp-project-management.get-project-docs${region}`,
+    GET_PROJECT_DOC_BY_ID: `getapp-project-management.get-project-doc-by-id${region}`,
+    CREATE_PROJECT_DOC: `getapp-project-management.create-project-doc${region}`,
+    UPDATE_PROJECT_DOC: `getapp-project-management.update-project-doc${region}`,
+    DELETE_PROJECT_DOC: `getapp-project-management.delete-project-doc${region}`,
+
     CHECK_HEALTH: `getapp-project-management.check-health${region}`
 } as const
 

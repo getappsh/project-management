@@ -4,6 +4,7 @@ import { MemberProjectEntity } from "./member_project.entity";
 import { RegulationEntity } from "./regulation.entity";
 import { ReleaseEntity } from "./release.entity";
 import { ProjectTokenEntity } from "./project-token.entity";
+import { DocEntity } from "./document.entity";
 
 @Entity("project")
 export class ProjectEntity extends BaseEntity{
@@ -29,6 +30,10 @@ export class ProjectEntity extends BaseEntity{
     
     @Column({ type: "jsonb", nullable: true, name: "project_summary", default: {} })
     projectSummary: Record<string, any>;
+
+    
+    @OneToMany(() => DocEntity, (doc) => doc.project, {lazy: true})
+    docs: Promise<DocEntity[]>;
 
     toString(){
         return JSON.stringify(this)

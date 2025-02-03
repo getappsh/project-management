@@ -162,6 +162,7 @@ export class CreateProjectDto {
   @IsNotEmpty()
   @ApiProperty({ required: false })
   @IsValidStringFor(Pattern.SINGLE_WORD)
+  @IsValidStringFor(Pattern.NOT_ONLY_NUMBERS)
   name: string;
 
   @IsString()

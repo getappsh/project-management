@@ -91,7 +91,7 @@ export class UpdateRegulationDto extends PartialType(CreateRegulationDto) {
 export class UpdateOneOfManyRegulationDto extends PartialType(CreateRegulationDto) {
     @ApiProperty({ description: 'Identifier (name) of the regulation' })
     @IsString()
-    @Type(() => String)
+    @IsNotEmpty()
     regulation: string;   
 }
 
