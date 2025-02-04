@@ -1,12 +1,13 @@
-import { ApiProperty, PartialType } from "@nestjs/swagger";
+import { ApiProperty, OmitType, PartialType } from "@nestjs/swagger";
 import { MemberResDto } from "./member-project-res.dto";
-import { MemberProjectEntity, ProjectEntity, RoleInProject } from "@app/common/database/entities";
-import { IsString, IsNotEmpty, IsOptional } from "class-validator";
+import { MemberProjectEntity, ProjectEntity, ProjectType, RoleInProject } from "@app/common/database/entities";
+import { IsString, IsNotEmpty, IsOptional, IsArray, IsEnum } from "class-validator";
 import { IsValidStringFor } from "@app/common/validators";
 import { Pattern } from "@app/common/validators/regex.validator";
 import { ProjectTokenDto } from "./project-token.dto";
 import { ProjectMemberPreferencesDto } from "./project-member.dto";
 import { ReleaseDto } from "../../upload";
+import { Transform } from "class-transformer";
 
 
 export class BaseProjectDto {
@@ -20,6 +21,9 @@ export class BaseProjectDto {
   @ApiProperty({ required: false })
   description?: string;
 
+  @ApiProperty({enum: ProjectType})
+  projectType: ProjectType
+
   @ApiProperty({ required: false,  description: 'Status of the project (active, completed, on-hold)'})
   status?: string; // Needs to be an enum
 
@@ -27,6 +31,7 @@ export class BaseProjectDto {
     this.id = project.id;
     this.name = project.name;
     this.description = project.description;
+    this.projectType = project.projectType;
     // this.status = project.status;
     return this;
   }
@@ -99,6 +104,9 @@ export class ProjectDto extends BaseProjectDto {
   @ApiProperty({ description: 'Owner of the project' })
   owner: string;
 
+  @ApiProperty({ required: false, description: 'Platforms supported by the project', isArray: true })
+  platforms: string[];
+
   @ApiProperty({ required: false, description: "Number of members in the project" })
   numMembers?: number
 
@@ -117,6 +125,7 @@ export class ProjectDto extends BaseProjectDto {
     this.versions = project.releases?.length;
     this.numMembers = project.memberProject?.length;
     this.summary = project.projectSummary;
+    this.platforms = project.platforms?.map(platform => platform.name);
 
     const ownerEntity = project.memberProject?.find(mp => mp.role === RoleInProject.PROJECT_OWNER);
     if(ownerEntity){
@@ -160,7 +169,7 @@ export class CreateProjectDto {
 
   @IsString()
   @IsNotEmpty()
-  @ApiProperty({ required: false })
+  @ApiProperty()
   @IsValidStringFor(Pattern.SINGLE_WORD)
   @IsValidStringFor(Pattern.NOT_ONLY_NUMBERS)
   name: string;
@@ -170,10 +179,34 @@ export class CreateProjectDto {
   @ApiProperty({ required: false })
   description: string;
 
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @IsNotEmpty({each: true})
+  @Transform(({ value }) => 
+    Array.isArray(value) 
+      ? value.map(v => v.toLowerCase().trim().replace(/\s+/g, "-")) 
+      : value
+  )
+  platforms?: string[];
+
+  @ApiProperty({enum: ProjectType, required: false, default: ProjectType.PRODUCT})
+  @IsEnum(ProjectType)
+  @IsOptional()
+  projectType: ProjectType = ProjectType.PRODUCT;
+
   username: string;
 }
 
-export class EditProjectDto extends PartialType(CreateProjectDto) {
+export class EditProjectDto extends PartialType(OmitType(CreateProjectDto, ['projectType'] as const)) {
   projectIdentifier: string | number;
   projectId: number;
+
+  // Override projectType to not have a default value
+  @ApiProperty({ enum: ProjectType, required: false })
+  @IsEnum(ProjectType)
+  @IsOptional()
+  projectType?: ProjectType;
 }

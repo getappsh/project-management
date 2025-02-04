@@ -76,6 +76,7 @@ export const ProjectManagementTopics = {
     GET_PROJECTS: `getapp-project-management.get-projects${region}`,
     SEARCH_PROJECTS: `getapp-project-management.search-projects${region}`,
     GET_PROJECT_BY_IDENTIFIER: `getapp-project-management.get-project-by-identifier${region}`,
+    GET_PLATFORMS: `getapp-project-management.get-platforms${region}`,
 
     ADD_PROJECT_NEW_MEMBER: `getapp-project-management.add-project-new-member${region}`,
     CONFIRM_PROJECT_MEMBER: `getapp-project-management.confirm-project-member${region}`,

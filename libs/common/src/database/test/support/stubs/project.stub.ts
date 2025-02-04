@@ -1,4 +1,4 @@
-import { ProjectEntity } from "@app/common/database/entities";
+import { ProjectEntity, ProjectType } from "@app/common/database/entities";
 import { uploadVersionEntityStub } from "./upload-version.stub";
 import { projectTokenEntityStub } from "./project-token.stub";
 
@@ -8,6 +8,7 @@ export const projectEntityStub = (): ProjectEntity => {
     name: uploadVersionEntityStub().component,
     description: 'Project description',
     regulations : [],
-    tokens: [projectTokenEntityStub()]
+    tokens: [projectTokenEntityStub()],
+    projectType: ProjectType.FORMATION
   } as ProjectEntity
 };
