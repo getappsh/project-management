@@ -120,6 +120,11 @@ export class ProjectManagementController {
     return this.projectManagementService.getProject(params, authEmail);
   }
 
+  @MessagePattern(ProjectManagementTopics.GET_PLATFORMS)
+  getPlatforms(@RpcPayload() query?: string): Promise<string[]> {
+    return this.projectManagementService.getPlatforms(query);
+  }
+
 
   @ValidateProjectUserAccess()
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_RELEASES)

@@ -1,5 +1,5 @@
-import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity, DocEntity } from '@app/common/database/entities';
-import { ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity, DocEntity, PlatformEntity, ProjectType } from '@app/common/database/entities';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike, In } from 'typeorm';
@@ -43,6 +43,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     @InjectRepository(MemberProjectEntity) private readonly memberProjectRepo: Repository<MemberProjectEntity>,
     @InjectRepository(MemberEntity) private readonly memberRepo: Repository<MemberEntity>,
     @InjectRepository(ProjectEntity) private readonly projectRepo: Repository<ProjectEntity>,
+    @InjectRepository(PlatformEntity) private readonly platformRepo: Repository<PlatformEntity>,
     @InjectRepository(ProjectTokenEntity) private readonly tokenRepo: Repository<ProjectTokenEntity>,
     @InjectRepository(DeviceEntity) private readonly deviceRepo: Repository<DeviceEntity>,
     @InjectRepository(DocEntity) private readonly docRepo: Repository<DocEntity>,
@@ -193,15 +194,39 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     }
   }
 
+  async getPlatforms(query: string = ''): Promise<string[]> {
+    this.logger.debug(`Get platforms with query: ${query}`)
+    return this.platformRepo.find({ where: { name: ILike(`%${query}%`) } }).then(platforms => platforms.map(platform => platform.name));
+  }
 
-  async createProject(projectDto: CreateProjectDto): Promise<BaseProjectDto> {
+  private async getOrCreatePlatforms(platforms?: string[]) {
+    this.logger.debug(`Get or create platforms: ${JSON.stringify(platforms)}`)
+    if (!platforms) {
+      return
+    }
+    if (platforms.length === 0) {
+      return [];
+    }
+    return this.platformRepo.save(platforms.map(platform => {return { name: platform }}));
+  }
+
+  async createProject(projectDto: CreateProjectDto): Promise<ProjectDto> {
     this.logger.debug(`Create project: ${projectDto.name}`)
+
 
     let project = new ProjectEntity();
     project.name = projectDto.name;
     project.description = projectDto.description;
+    project.projectType = projectDto.projectType ?? ProjectType.PRODUCT;
 
-    let member = await this.getOrCreateMember(projectDto.username, false)
+    this.enforceProjectRestrictions({projectType: project.projectType, platforms: projectDto.platforms});
+
+    let [member, platforms] = await Promise.all([
+      this.getOrCreateMember(projectDto.username, false), 
+      this.getOrCreatePlatforms(projectDto.platforms)
+    ]);
+    
+    project.platforms = platforms;
 
     try {
       project = await this.projectRepo.save(project);
@@ -223,24 +248,44 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     mp = await this.memberProjectRepo.save(mp);
     this.logger.debug(`MemberProject: ${mp}`)
 
-    return new BaseProjectDto().fromProjectEntity(project)
+    return new ProjectDto().fromProjectEntity(project)
   }
 
-  async editProject(dto: EditProjectDto): Promise<BaseProjectDto>{
+  async editProject(dto: EditProjectDto): Promise<ProjectDto>{
     this.logger.debug(`Edit project: ${dto.projectId}`)
  
-    const project =  new ProjectEntity();
-    project.id = dto.projectId;
+    const project = await this.projectRepo.findOneBy({ id: dto.projectId });
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+    
+    project.projectType = dto.projectType ?? project.projectType;
+
+    this.enforceProjectRestrictions({
+      projectType: project.projectType, 
+      platforms: dto.platforms ?? project.platforms.map(platform => platform.name)
+    });
+
+    project.platforms = await this.getOrCreatePlatforms(dto.platforms) ?? project.platforms;
+
     project.name = dto.name;
     project.description = dto.description;
+    project.projectType = dto.projectType;
+
     try {
       await this.projectRepo.save(project);
-      return new BaseProjectDto().fromProjectEntity(await this.getProjectEntity(dto.projectId));
+      return new ProjectDto().fromProjectEntity(await this.getProjectEntity(dto.projectId));
     }catch(error){
       if (error.code === '23505'){
         throw new ConflictException('Project name already exists');
       }
       throw error;
+    }
+  }
+
+  private enforceProjectRestrictions(project: {projectType: ProjectType, platforms?: string[]}){
+    if (project.projectType === ProjectType.FORMATION && project.platforms?.length > 1) {
+      throw new BadRequestException('Formation projects can only have one platform');
     }
   }
 

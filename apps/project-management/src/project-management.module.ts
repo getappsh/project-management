@@ -1,5 +1,5 @@
 import { DatabaseModule, UploadJwtConfigService,  } from '@app/common';
-import { MemberEntity, ProjectEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity } from '@app/common/database/entities';
+import { MemberEntity, ProjectEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity, PlatformEntity } from '@app/common/database/entities';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -25,7 +25,7 @@ import { MicroserviceModule, MicroserviceName, MicroserviceType } from '@app/com
     }),
     TypeOrmModule.forFeature([
       MemberEntity, ProjectEntity, MemberProjectEntity, UploadVersionEntity, 
-      RegulationEntity, RegulationTypeEntity,
+      RegulationEntity, RegulationTypeEntity, PlatformEntity,
       DeviceEntity, ProjectTokenEntity, DocEntity
     ]),
     OidcModule.forRoot(),
@@ -41,7 +41,7 @@ import { MicroserviceModule, MicroserviceName, MicroserviceType } from '@app/com
     SeederService,
     {
       provide: PROJECT_ACCESS_SERVICE,
-      useClass: ProjectManagementService
+      useExisting: ProjectManagementService
     }
   ],
   exports: [SeederService],
