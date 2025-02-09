@@ -137,12 +137,13 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   // TODO status not implemented
   async searchProjects(dto: SearchProjectsQueryDto, email: string): Promise<PaginatedResultDto<BaseProjectDto>> {
     this.logger.debug(`Search projects with query: ${JSON.stringify(dto)}`)
-    const { page = 1 , perPage = 10, query, status} = dto;
+    const { page = 1 , perPage = 10, query, status, type } = dto;
 
     const [projectsEntities, count] = await this.projectRepo.findAndCount({
       where: {
         memberProject: {member: {email: email}},
         name: ILike(`%${query}%`),
+        projectType: type,
       },
       skip: (page - 1) * perPage,
       take: perPage,
