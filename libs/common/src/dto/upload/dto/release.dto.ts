@@ -36,6 +36,12 @@ export class SetReleaseDto {
   @IsOptional()
   isDraft?: boolean = true;
 
+  @ApiProperty({ required: false, type: String, isArray: true , description: 'List of dependencies. Providing an empty array will remove all dependencies. Omitting this field or setting it to null will leave dependencies unchanged.' })
+  @IsOptional()
+  @IsString({each: true})
+  @IsNotEmpty({each: true})
+  dependencies?: string[]
+
 }
 
 export class ReleaseDto {
@@ -60,9 +66,6 @@ export class ReleaseDto {
   @ApiProperty({ type: 'enum', enum: ReleaseStatusEnum })
   status: ReleaseStatusEnum;
 
-  @ApiProperty({ type: ReleaseArtifactDto, isArray: true, required: false })
-  artifacts?: ReleaseArtifactDto[];
-
   @ApiProperty()
   createdAt: Date;
 
@@ -84,12 +87,34 @@ export class ReleaseDto {
     dto.releaseNotes = release.releaseNotes;
     dto.metadata = release.metadata;
     dto.status = release.status;
-    dto.artifacts = release?.artifacts?.map((artifact) => ReleaseArtifactDto.fromEntity(artifact));
     dto.createdAt = release.createdAt;
     dto.updatedAt = release.updatedAt;
     dto.requiredRegulationsCount = release.requiredRegulationsCount;
     dto.compliantRegulationsCount = release.compliantRegulationsCount;
     return dto;
+  }
+}
+
+export class DetailedReleaseDto extends ReleaseDto {
+
+  @ApiProperty({ type: ReleaseArtifactDto, isArray: true, required: false })
+  artifacts?: ReleaseArtifactDto[];
+
+  @ApiProperty({type: ReleaseDto, isArray: true, required: false})
+  dependencies: ReleaseDto[]
+
+
+  static fromEntity(release: ReleaseEntity): DetailedReleaseDto {
+    const baseDto = super.fromEntity(release);
+    const dto = new DetailedReleaseDto();
+
+    Object.assign(dto, baseDto);
+
+    dto.artifacts = release?.artifacts?.map(art => ReleaseArtifactDto.fromEntity(art))
+    dto.dependencies = release?.dependencies?.map(dep => ReleaseDto.fromEntity(dep))
+
+    return dto
+
   }
 }
 

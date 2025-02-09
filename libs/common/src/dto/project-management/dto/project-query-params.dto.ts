@@ -1,6 +1,7 @@
+import { ProjectType } from '@app/common/database/entities';
 import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, IsPositive, IsString } from 'class-validator';
+import { IsBoolean, IsEnum, IsInt, IsOptional, IsPositive, IsString } from 'class-validator';
 
 export class GetProjectsQueryDto {
   @ApiPropertyOptional({
@@ -61,6 +62,14 @@ export class SearchProjectsQueryDto {
   @IsString()
   @Type(() => String)
   status?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by project type',
+    enum: ProjectType,
+  })
+  @IsOptional()
+  @IsEnum(ProjectType)
+  type?: ProjectType;
 
   @ApiPropertyOptional({
     description: 'The page number to fetch (default: 1)',
