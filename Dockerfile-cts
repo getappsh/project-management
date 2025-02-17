@@ -59,8 +59,6 @@ RUN npm run build
 
 FROM cts as deploy
 
-ARG project-management_version_tag
-ENV project_management_version_tag=$project-management_version_tag
 ENV NODE_ENV=production
 
 ARG uid=1004370000
@@ -71,11 +69,12 @@ COPY --chown=${uid}:${uid} package*.json ./
 RUN npm install --only=production --omit=dev
 
 COPY --chown=${uid}:${uid} --from=build /node-app/dist/ .
-RUN echo "$project_management_version_tag" > NEW_TAG.txt 
 
 # a file that contains the image version
-# COPY docker_image_version.txt /docker_image_version.txt
-# RUN cat docker_image_version.txt
+ARG project_version_tag
+ENV project_version_tag=$project_version_tag
+RUN echo "$project_version_tag" > project_version_tag.txt
+RUN cat project_version_tag.txt
 
 USER ${username}
 CMD ["node", "apps/project-management/main.js"]
