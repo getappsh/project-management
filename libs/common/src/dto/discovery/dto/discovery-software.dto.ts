@@ -116,6 +116,10 @@ export class DiscoverySoftwareDto {
   @ValidateNested()
   @Type(() => PlatformDto)
   platform: PlatformDto;
+
+  toString(){
+    return JSON.stringify(this)
+  }
 }
 
 export class ComponentStateDto{
@@ -132,6 +136,10 @@ export class ComponentStateDto{
   @IsOptional()
   @IsString()
   error?: string
+
+  toString(){
+    return JSON.stringify(this)
+  }
 }
 
 export class DiscoverySoftwareV2Dto {
@@ -156,6 +164,10 @@ export class DiscoverySoftwareV2Dto {
   @ValidateNested()
   @Type(() => ComponentStateDto)
   components: ComponentStateDto[]
+
+  toString(){
+    return JSON.stringify(this)
+  }
 }
 
 
