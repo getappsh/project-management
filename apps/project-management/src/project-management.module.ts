@@ -32,6 +32,7 @@ import { MicroserviceModule, MicroserviceName, MicroserviceType } from '@app/com
     MicroserviceModule.register({
       name: MicroserviceName.UPLOAD_SERVICE,
       type: MicroserviceType.UPLOAD,
+      id: "project-management"
     }),
   ],
   controllers: [ProjectManagementController],
