@@ -1,16 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
-<<<<<<< HEAD
-import { OidcService } from "./oidc.interface";
-import { UserDto } from "../dto/oidc/dto/user.dto";
-import { HttpService } from "@nestjs/axios";
-import { ConfigService } from "@nestjs/config";
-=======
 import { OidcService, UserSearchDto } from "./oidc.interface";
 import { UserDto } from "../dto/oidc/dto/user.dto";
 import { HttpService } from "@nestjs/axios";
 import { ConfigService } from "@nestjs/config";
 import { MailService } from "../mail/mail.service";
->>>>>>> 4899b69ff08b2ab986f09e75e668aad13b149253
 
 @Injectable()
 export class KcService implements OidcService {

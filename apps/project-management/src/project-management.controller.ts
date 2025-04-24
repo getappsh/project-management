@@ -1,45 +1,112 @@
-import { ProjectManagementTopics } from '@app/common/microservice-client/topics';
-import { Controller, Logger } from '@nestjs/common';
-import { UseGuards } from '@nestjs/common/decorators/core/use-guards.decorator';
-import { MessagePattern } from '@nestjs/microservices';
+import { ProjectManagementTopics, ProjectManagementTopicsEmit } from '@app/common/microservice-client/topics';
+import { Controller, Logger, UseInterceptors } from '@nestjs/common';
+import { EventPattern, MessagePattern } from '@nestjs/microservices';
 import { ProjectManagementService } from './project-management.service';
-import { MemberInProjectGuard } from './guards/member-in-project.guard';
-import { MemberProjectEntity } from '@app/common/database/entities';
-import { DeviceResDto } from '../../../libs/common/src/dto/project-management/dto/device-res.dto';
+import { DeviceResDto } from '@app/common/dto/project-management/dto/device-res.dto';
 import {
-  EditProjectMemberDto, CreateProjectDto, ProjectMemberDto, 
-  ProjectTokenDto, MemberResDto, MemberProjectsResDto,
+  EditProjectMemberDto, CreateProjectDto, AddMemberToProjectDto,
+  MemberResDto, MemberProjectsResDto,
   CreateRegulationDto,
-  UpdateRegulationDto
+  UpdateRegulationDto,
+  RegulationParams,
+  ProjectMemberParams,
+  ProjectIdentifierParams,
+  SearchProjectsQueryDto,
+  GetProjectsQueryDto,
+  CreateProjectTokenDto,
+  TokenParams,
+  UpdateProjectTokenDto,
+  DetailedProjectDto,
+  EditProjectDto,
+  ProjectMemberPreferencesDto,
+  UpdateOneOfManyRegulationDto,
+  CreateDocDto, 
+  DocsParams, 
+  UpdateDocDto
 } from '@app/common/dto/project-management';
-import { RpcPayload } from '@app/common/microservice-client';
+import { RpcPayload, UserContextInterceptor } from '@app/common/microservice-client';
 import * as fs from 'fs';
+import { AuthUser } from './utils/auth-user.decorator';
+import { RoleInProject } from '@app/common/database/entities';
+import { RegulationService } from './regulation.service';
+import { UserSearchDto } from '@app/common/oidc/oidc.interface';
+import { ValidateProjectAnyAccess, ValidateProjectUserAccess } from '@app/common/utils/project-access';
+import { ProjectReleasesChangedEvent } from '@app/common/dto/project-management';
 
 @Controller()
+@UseInterceptors(UserContextInterceptor)
 export class ProjectManagementController {
   private readonly logger = new Logger(ProjectManagementController.name);
 
-  constructor(private readonly projectManagementService: ProjectManagementService) { }
+  constructor(
+    private readonly projectManagementService: ProjectManagementService,
+    private readonly regulationService: RegulationService
+  ) { }
 
+  @MessagePattern(ProjectManagementTopics.GET_USERS)
+  getAllUsers(@RpcPayload() params: UserSearchDto) {
+    return this.projectManagementService.getUsers(params);
+  }
 
+  @MessagePattern(ProjectManagementTopics.GET_PROJECTS)
+  getProjects(@RpcPayload() query: GetProjectsQueryDto, @AuthUser('email') email: string) {
+    return this.projectManagementService.getProjects(query, email);
+  }
+
+  @MessagePattern(ProjectManagementTopics.SEARCH_PROJECTS)
+  searchProjects(@RpcPayload() query: SearchProjectsQueryDto, @AuthUser('email') email: string) {
+    return this.projectManagementService.searchProjects(query, email);
+  }
   @MessagePattern(ProjectManagementTopics.CREATE_PROJECT)
-  createProject(@RpcPayload() data: { member: any, project: CreateProjectDto }) {
-    return this.projectManagementService.createProject(data);
+  createProject(@RpcPayload() project: CreateProjectDto) {
+    return this.projectManagementService.createProject(project);
   }
 
-  @MessagePattern(ProjectManagementTopics.ADD_NEW_MEMBER)
-  addMemberToProject(@RpcPayload() data: { user: any, projectMember: ProjectMemberDto }) {
-    return this.projectManagementService.addMemberToProject(data);
+  @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
+  @MessagePattern(ProjectManagementTopics.EDIT_PROJECT)
+  editProject(@RpcPayload() project: EditProjectDto) {
+    return this.projectManagementService.editProject(project);
   }
 
-  @MessagePattern(ProjectManagementTopics.REMOVE_MEMBER)
-  removeMemberFromProject(@RpcPayload() data: any) {
-    return this.projectManagementService.removeMemberFromProject(data);
+  @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER)
+  @MessagePattern(ProjectManagementTopics.DELETE_PROJECT)
+  deleteProject(@RpcPayload() params: ProjectIdentifierParams) {
+    return this.projectManagementService.deleteProject(params);
   }
 
-  @MessagePattern(ProjectManagementTopics.EDIT_MEMBER)
-  editMember(@RpcPayload() data: { user: any, projectMember: EditProjectMemberDto }): Promise<MemberResDto> {
-    return this.projectManagementService.editMember(data);
+  @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
+  @MessagePattern(ProjectManagementTopics.ADD_PROJECT_NEW_MEMBER)
+  addMemberToProject(@RpcPayload() projectMember: AddMemberToProjectDto) {
+    return this.projectManagementService.addMemberToProject(projectMember);
+  }
+
+  @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
+  @MessagePattern(ProjectManagementTopics.REMOVE_PROJECT_MEMBER)
+  removeMemberFromProject(@RpcPayload() params: ProjectMemberParams, @AuthUser("email") authEmail: string) {
+    return this.projectManagementService.removeMemberFromProject(params, authEmail);
+  }
+
+  @MessagePattern(ProjectManagementTopics.CONFIRM_PROJECT_MEMBER)
+  confirmMemberInProject(@RpcPayload() params: ProjectIdentifierParams, @AuthUser("email") authEmail: string) {
+    return this.projectManagementService.confirmMemberInProject(params, authEmail);
+  }
+
+  @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
+  @MessagePattern(ProjectManagementTopics.EDIT_PROJECT_MEMBER)
+  editProjectMember(@RpcPayload() projectMember: EditProjectMemberDto): Promise<MemberResDto> {
+    return this.projectManagementService.editProjectMember(projectMember);
+  }
+
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.GET_MEMBER_PROJECT_PREFERENCES)
+  getMemberProjectPreferences(@RpcPayload() params: ProjectIdentifierParams, @AuthUser("email") authEmail: string) {
+    return this.projectManagementService.getMemberProjectPreferences(params, authEmail);
+
+  }
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.UPDATE_MEMBER_PROJECT_PREFERENCES)
+  updateMemberProjectPreferences(@RpcPayload() dto: ProjectMemberPreferencesDto, @AuthUser("email") authEmail: string) {
+    return this.projectManagementService.updateMemberProjectPreferences(dto, authEmail);
   }
 
   @MessagePattern(ProjectManagementTopics.GET_USER_PROJECTS)
@@ -47,74 +114,164 @@ export class ProjectManagementController {
     return this.projectManagementService.getUserProjects(email);
   }
 
-  @UseGuards(MemberInProjectGuard)
-  @MessagePattern(ProjectManagementTopics.CREATE_TOKEN)
-  createToken(@RpcPayload() data: { user: any, projectId: number, memberProject: MemberProjectEntity }): Promise<ProjectTokenDto> {
-    return this.projectManagementService.createToken(data);
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.GET_PROJECT_BY_IDENTIFIER)
+  getProject(@RpcPayload() params: ProjectIdentifierParams, @AuthUser("email") authEmail: string): Promise<DetailedProjectDto> {
+    return this.projectManagementService.getProject(params, authEmail);
   }
-  @UseGuards(MemberInProjectGuard)
+
+  @MessagePattern(ProjectManagementTopics.GET_PLATFORMS)
+  getPlatforms(@RpcPayload() query?: string): Promise<string[]> {
+    return this.projectManagementService.getPlatforms(query);
+  }
+
+
+  @ValidateProjectUserAccess()
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_RELEASES)
-  getProjectReleases(@RpcPayload() data: { user: any, projectId: number, memberProject: MemberProjectEntity }) {
-    return this.projectManagementService.getProjectReleases(data);
+  getProjectReleases(@RpcPayload('projectId') projectId: number) {
+    return this.projectManagementService.getProjectReleases(projectId);
   }
 
   @MessagePattern(ProjectManagementTopics.GET_DEVICES_BY_CATALOG_ID)
   getDevicesByCatalogId(@RpcPayload("stringValue") catalogId: string): Promise<DeviceResDto[]> {
     return this.projectManagementService.getDevicesByCatalogId(catalogId);
   }
+
   @MessagePattern(ProjectManagementTopics.GET_DEVICES_BY_PROJECT)
-  getDevicesByProject(@RpcPayload()projectId: number): Promise<DeviceResDto[]> {
+  getDevicesByProject(@RpcPayload() projectId: number): Promise<DeviceResDto[]> {
     return this.projectManagementService.getDevicesByProject(projectId);
   }
+
   @MessagePattern(ProjectManagementTopics.GET_DEVICES_BY_PLATFORM)
   getDevicesByPlatform(@RpcPayload("stringValue") platform: string): Promise<DeviceResDto[]> {
     return this.projectManagementService.getDevicesByPlatform(platform);
   }
 
+  // regulations
+
   @MessagePattern(ProjectManagementTopics.GET_REGULATION_TYPES)
-  getRegulationTypes(){
-    return this.projectManagementService.getRegulationTypes()
+  getRegulationTypes() {
+    return this.regulationService.getRegulationTypes()
   }
 
+  @ValidateProjectAnyAccess()
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_REGULATIONS)
-  getProjectRegulations(@RpcPayload() projectId: number){
-    return this.projectManagementService.getProjectRegulations(projectId)
+  getProjectRegulations(@RpcPayload('projectId') projectId: number) {
+    return this.regulationService.getProjectRegulations(projectId)
   }
 
-  // TODO: create and update regulation need to be associated with a project
-  @MessagePattern(ProjectManagementTopics.CREATE_REGULATION)
-  createRegulation(@RpcPayload() regulation: CreateRegulationDto){
-    return this.projectManagementService.createRegulation(regulation)
+  @ValidateProjectAnyAccess()
+  @MessagePattern(ProjectManagementTopics.GET_PROJECT_REGULATION_BY_NAME)
+  getRegulationByName(@RpcPayload() params: RegulationParams) {
+    return this.regulationService.getRegulationByName(params)
   }
 
-  // TODO: create and update regulation need to be associated with a project
-  @MessagePattern(ProjectManagementTopics.UPDATE_REGULATION)
-  updateRegulation(@RpcPayload() regulation: UpdateRegulationDto){
-    return this.projectManagementService.updateRegulation(regulation)
+  @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
+  @MessagePattern(ProjectManagementTopics.CREATE_PROJECT_REGULATION)
+  createRegulation(@RpcPayload() regulation: CreateRegulationDto) {
+    return this.regulationService.createRegulation(regulation)
   }
 
-  @MessagePattern(ProjectManagementTopics.GET_REGULATION_BY_ID)
-  getRegulationById(@RpcPayload() regulationId: number){
-    return this.projectManagementService.getRegulationById(regulationId)
+  @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
+  @MessagePattern(ProjectManagementTopics.UPDATE_PROJECT_REGULATIONS)
+  updateRegulations(@RpcPayload() dto: {projectId: number, regulations: UpdateOneOfManyRegulationDto[]}) {
+    return this.regulationService.updateRegulations(dto.projectId, dto.regulations)
   }
 
-  @MessagePattern(ProjectManagementTopics.DELETE_REGULATION)
-  deleteRegulation(@RpcPayload() regulationId: number){
-    return this.projectManagementService.deleteRegulation(regulationId)
+
+  @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
+  @MessagePattern(ProjectManagementTopics.UPDATE_PROJECT_REGULATION)
+  updateRegulation(@RpcPayload() regulation: UpdateRegulationDto) {
+    return this.regulationService.updateRegulation(regulation)
+  }
+
+  @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
+  @MessagePattern(ProjectManagementTopics.DELETE_PROJECT_REGULATION)
+  deleteRegulation(@RpcPayload() params: RegulationParams) {
+    return this.regulationService.deleteRegulation(params)
+  }
+
+  // PROJECT TOKEN
+
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.GET_PROJECT_TOKENS)
+  getProjectTokens(@RpcPayload() params: ProjectIdentifierParams) {
+    return this.projectManagementService.getProjectTokens(params.projectId)
+  }
+
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.GET_PROJECT_TOKEN_BY_ID)
+  getProjectTokenById(@RpcPayload() params: TokenParams) {
+    return this.projectManagementService.getProjectTokenById(params)
+  }
+
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.CREATE_PROJECT_TOKEN)
+  createProjectToken(@RpcPayload() dto: CreateProjectTokenDto) {
+    return this.projectManagementService.createToken(dto)
+  }
+
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.UPDATE_PROJECT_TOKEN)
+  updateProjectToken(@RpcPayload() dto: UpdateProjectTokenDto) {
+    return this.projectManagementService.updateProjectToken(dto)
+  }
+
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.DELETE_PROJECT_TOKEN)
+  deleteProjectToken(@RpcPayload() params: TokenParams) {
+    return this.projectManagementService.deleteProjectToken(params)
   }
 
   @MessagePattern(ProjectManagementTopics.CHECK_HEALTH)
-  healthCheckSuccess(){
+  healthCheckSuccess() {
     const version = this.readImageVersion()
     this.logger.log(`Device service - Health checking, Version: ${version}`)
     return "Project-Management is running successfully. Version: " + version
   }
 
-  private readImageVersion(){
+  @EventPattern(ProjectManagementTopicsEmit.PROJECT_RELEASES_CHANGED)
+  onProjectReleasesChanged(@RpcPayload() event: ProjectReleasesChangedEvent) {
+    this.projectManagementService.onProjectReleasesChanged(event)
+  }
+
+
+  // DOCS
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.GET_PROJECT_DOCS)
+  getDocs(@RpcPayload() params: ProjectIdentifierParams) {
+    return this.projectManagementService.getDocs(params.projectId)
+  }
+
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.GET_PROJECT_DOC_BY_ID)
+  getDocById(@RpcPayload() params: DocsParams) {
+    return this.projectManagementService.getDocById(params)
+  }
+
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.CREATE_PROJECT_DOC)
+  createDoc(@RpcPayload() dto: CreateDocDto) {
+    return this.projectManagementService.createDoc(dto)
+  }
+
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.UPDATE_PROJECT_DOC)
+  updateDoc(@RpcPayload() dto: UpdateDocDto) {
+    return this.projectManagementService.updateDoc(dto)
+  }
+
+  @ValidateProjectUserAccess()
+  @MessagePattern(ProjectManagementTopics.DELETE_PROJECT_DOC)
+  deleteDoc(@RpcPayload() params: DocsParams) {
+    return this.projectManagementService.deleteDoc(params)
+  }
+
+  private readImageVersion() {
     let version = 'unknown'
-    try{
-      version = fs.readFileSync('NEW_TAG.txt','utf8');
-    }catch(error){
+    try {
+      version = fs.readFileSync('NEW_TAG.txt', 'utf8');
+    } catch (error) {
       this.logger.error(`Unable to read image version - error: ${error}`)
     }
     return version

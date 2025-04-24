@@ -1,5 +1,5 @@
 import { DatabaseModule, UploadJwtConfigService,  } from '@app/common';
-import { MemberEntity, ProjectEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity } from '@app/common/database/entities';
+import { MemberEntity, ProjectEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity, PlatformEntity } from '@app/common/database/entities';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -9,7 +9,10 @@ import { ProjectManagementService } from './project-management.service';
 import { LoggerModule } from '@app/common/logger/logger.module';
 import { ApmModule } from '@app/common/apm/apm.module';
 import { OidcModule } from '@app/common/oidc/oidc.module';
-
+import { SeederService } from './utils/seeder.service';
+import { RegulationService } from './regulation.service';
+import { PROJECT_ACCESS_SERVICE } from '@app/common/utils/project-access';
+import { MicroserviceModule, MicroserviceName, MicroserviceType } from '@app/common/microservice-client';
 
 @Module({
   imports: [
@@ -22,12 +25,26 @@ import { OidcModule } from '@app/common/oidc/oidc.module';
     }),
     TypeOrmModule.forFeature([
       MemberEntity, ProjectEntity, MemberProjectEntity, UploadVersionEntity, 
-      RegulationEntity, RegulationTypeEntity,
-      DeviceEntity,
+      RegulationEntity, RegulationTypeEntity, PlatformEntity,
+      DeviceEntity, ProjectTokenEntity, DocEntity
     ]),
-    OidcModule
+    OidcModule.forRoot(),
+    MicroserviceModule.register({
+      name: MicroserviceName.UPLOAD_SERVICE,
+      type: MicroserviceType.UPLOAD,
+      id: "project-management"
+    }),
   ],
   controllers: [ProjectManagementController],
-  providers: [ProjectManagementService],
+  providers: [
+    ProjectManagementService, 
+    RegulationService, 
+    SeederService,
+    {
+      provide: PROJECT_ACCESS_SERVICE,
+      useExisting: ProjectManagementService
+    }
+  ],
+  exports: [SeederService],
 })
 export class ProjectManagementModule {}
