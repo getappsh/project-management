@@ -14,6 +14,10 @@ export class DBService implements OidcService {
     @InjectRepository(MemberEntity) private readonly memberRepo: Repository<MemberEntity>
   ) { }
 
+  async inviteUser(params?: UserDto): Promise<void> {
+
+  }
+
   async authenticate(): Promise<void> {
   }
 
