@@ -1,105 +1,245 @@
-import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, RegulationEntity, RegulationTypeEntity } from '@app/common/database/entities';
-import { ConflictException, HttpException, HttpStatus, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity, DocEntity, PlatformEntity, ProjectType } from '@app/common/database/entities';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
-import { ProjectMemberDto } from '@app/common/dto/project-management/dto/project-member.dto';
-import { EditProjectMemberDto } from '@app/common/dto/project-management/dto/edit-project-member.dto';
+import { Repository, ILike, In } from 'typeorm';
+import { AddMemberToProjectDto, EditProjectMemberDto, ProjectMemberParams, ProjectMemberPreferencesDto } from '@app/common/dto/project-management/dto/project-member.dto';
 import {
   DeviceResDto, ProjectReleasesDto, ProjectTokenDto,
-  MemberProjectResDto, MemberProjectsResDto, MemberResDto, ProjectDto,
+  MemberProjectsResDto, MemberResDto, ProjectDto,
   CreateProjectDto,
-  RegulationTypeDto,
-  RegulationDto,
-  CreateRegulationDto,
-  UpdateRegulationDto
+  ProjectIdentifierParams,
+  GetProjectsQueryDto,
+  SearchProjectsQueryDto,
+  BaseProjectDto,
+  TokenParams,
+  CreateProjectTokenDto,
+  UpdateProjectTokenDto,
+  DetailedProjectDto,
+  EditProjectDto,
+  ProjectMemberContextDto,
+  ProjectReleasesChangedEvent,
+  CreateDocDto, 
+  DocDto, 
+  DocsParams, 
+  UpdateDocDto 
 } from '@app/common/dto/project-management';
+import { OidcService, UserSearchDto } from '@app/common/oidc/oidc.interface';
+import { PaginatedResultDto } from '@app/common/dto/pagination.dto';
+import { ProjectAccessService } from '@app/common/utils/project-access';
+import { MicroserviceClient, MicroserviceName } from '@app/common/microservice-client';
+import { UploadTopics } from '@app/common/microservice-client/topics';
+import { ReleaseParams } from '@app/common/dto/upload';
+import { lastValueFrom } from 'rxjs';
 
 
 @Injectable()
-export class ProjectManagementService {
-
+export class ProjectManagementService implements ProjectAccessService, OnModuleInit{
+  
   private readonly logger = new Logger(ProjectManagementService.name);
   constructor(
     private readonly jwtService: JwtService,
-    @InjectRepository(UploadVersionEntity) private readonly uploadVersionEntity: Repository<UploadVersionEntity>,
+    @InjectRepository(UploadVersionEntity) private readonly uploadVersionRepo: Repository<UploadVersionEntity>,
     @InjectRepository(MemberProjectEntity) private readonly memberProjectRepo: Repository<MemberProjectEntity>,
     @InjectRepository(MemberEntity) private readonly memberRepo: Repository<MemberEntity>,
     @InjectRepository(ProjectEntity) private readonly projectRepo: Repository<ProjectEntity>,
+    @InjectRepository(PlatformEntity) private readonly platformRepo: Repository<PlatformEntity>,
+    @InjectRepository(ProjectTokenEntity) private readonly tokenRepo: Repository<ProjectTokenEntity>,
     @InjectRepository(DeviceEntity) private readonly deviceRepo: Repository<DeviceEntity>,
-    @InjectRepository(RegulationEntity) private readonly regulationRepo: Repository<RegulationEntity>,
-    @InjectRepository(RegulationTypeEntity) private readonly regulationTypeRepo: Repository<RegulationTypeEntity>,
+    @InjectRepository(DocEntity) private readonly docRepo: Repository<DocEntity>,
+    @Inject("OidcProviderService") private readonly oidcService: OidcService,
+    @Inject(MicroserviceName.UPLOAD_SERVICE) private readonly uploadClient: MicroserviceClient,
   ) { }
+  async getUsers(params: UserSearchDto) {
+    return await this.oidcService.getUsers(params)
+  }
 
-  getMemberInProjectByEmail(projectId: number, email: string) {
+  private findProjectCondition(projectIdentifier: number | string) {
+    return typeof projectIdentifier === 'number'
+    ? { id: projectIdentifier }
+    : { name: projectIdentifier };
+  }
+  
+  getMemberInProject(projectId: number, email: string): Promise<MemberProjectEntity>;
+  getMemberInProject(projectName: string, email: string): Promise<MemberProjectEntity>;
+  getMemberInProject(projectIdentifier: string | number, email: string): Promise<MemberProjectEntity> {
+    this.logger.verbose(`Get member in project with email: ${email} and project-identifier: ${projectIdentifier}`)
+    const projectCondition = this.findProjectCondition(projectIdentifier);
+
     return this.memberProjectRepo.findOne({
       relations: ['project', 'member'],
       where: {
-        project: { id: projectId },
+        project: projectCondition,
         member: { email: email }
       }
     });
   }
 
-  private async saveMemberIfNotExist(email: string, firsName: string, lastName: string): Promise<MemberEntity> {
-    let member = await this.memberRepo.findOne({ where: { email: email } })
-    if (!member) {
-      this.logger.debug("User is not exist, create him.");
-      member = new MemberEntity()
-      member.firstName = firsName;
-      member.lastName = lastName;
-      member.email = email;
-
-      member = await this.memberRepo.save(member);
+  async getProjectFromToken(token: string): Promise<ProjectEntity> {
+    const payload = this.jwtService.verify(token)
+    const project = await this.projectRepo.findOne({ where: { id: payload.data.projectId, tokens: { token: token, isActive: true } } })
+    if (!project) {
+      throw new ForbiddenException('Not Allowed in this project');
     }
-    return member;
+    
+    return project;
   }
-  // TODO use guard to verify user is a project-admin instead of this method
-  private async isProjectAdmin(email: string, projectId: number) {
-    const memberProject = await this.memberProjectRepo
-      .findOne({
-        relations: ['project', 'member'],
-        where: {
-          project: {
-            id: projectId
-          },
-          member: {
-            email: email
-          },
-          role: In([RoleInProject.PROJECT_ADMIN, RoleInProject.PROJECT_OWNER])
+
+
+  async getProjects(query: GetProjectsQueryDto, email: string): Promise<PaginatedResultDto<ProjectDto>> {
+    this.logger.debug(`Get projects with query: ${JSON.stringify(query)}`)
+    const { page = 1 , perPage = 10, pinned, includePinned } = query;
+    
+    const pinnedQuery = {pinned: undefined};
+    if (includePinned === false) {
+      pinnedQuery.pinned = false;
+    }
+    if (pinned === true) {
+      pinnedQuery.pinned = true;
+    }
+
+    const [projectsId, count] = await this.projectRepo.findAndCount({
+      select: {id: true},
+      where: {
+        memberProject: {
+          member: {email: email},
+          ...pinnedQuery
+        },
+      }
+    });
+
+    const projectsEntities = await this.projectRepo.find({
+      select: {memberProject: true, releases: {catalogId: true}},
+      where: {
+        id: In(projectsId.map(project => project.id))
+      },
+      relations: {memberProject: {member: true}, releases: true},
+      skip: (page - 1) * perPage,
+      take: perPage,
+    })
+    
+    const projects = projectsEntities.map(project => {
+      const dto = new ProjectDto().fromProjectEntity(project)
+      const member = project.memberProject.find(mp => mp.member.email === email);
+      dto.memberContext = new ProjectMemberContextDto().fromMemberProjectEntity(member);
+      return dto
+    });
+
+    return {
+      data: projects,
+      total: count,
+      perPage: perPage,
+      page: page,
+    }
+
+  }
+
+  // TODO status not implemented
+  async searchProjects(dto: SearchProjectsQueryDto, email: string): Promise<PaginatedResultDto<BaseProjectDto>> {
+    this.logger.debug(`Search projects with query: ${JSON.stringify(dto)}`)
+    const { page = 1 , perPage = 10, query, status, type } = dto;
+
+    const [projectsEntities, count] = await this.projectRepo.findAndCount({
+      where: {
+        memberProject: {member: {email: email}},
+        name: ILike(`%${query}%`),
+        projectType: type,
+      },
+      skip: (page - 1) * perPage,
+      take: perPage,
+    })
+    
+    const project = projectsEntities.map(project => new BaseProjectDto().fromProjectEntity(project));
+
+    return {
+      data: project,
+      total: count,
+      perPage: perPage,
+      page: page,
+    }
+  }
+
+
+
+  private async getOrCreateMember(email: string, invite?: boolean): Promise<MemberEntity> {
+
+    try {
+      let member = await this.getMemberByEmail(email).catch(error => {
+        this.logger.debug(`Member with email ${email} not found, creating new member`);
+      });
+      if (!member || !member.firstName || !member.lastName) {
+        if (!member) {
+          member = new MemberEntity()
+          member.email = email;
         }
-      })
 
-    if (!memberProject) {
-      const errorMes = `Project: ${projectId} doesn't exist or User: ${email} is Not allowed to add members to this Project`
-      this.logger.debug(errorMes)
-      throw new HttpException(errorMes, HttpStatus.FORBIDDEN);
+        const user = await this.oidcService.getUsers({ email: email, exact: true });
 
+        if (user && user[0]) {
+          member.firstName = user[0].firstName;
+          member.lastName = user[0].lastName;
+        } else {
+          if (invite) {
+            this.oidcService.inviteUser({ email });
+          } else {
+            this.logger.error(`User with email ${email} not found`);
+            throw new NotFoundException(`User with email ${email} not found`);
+          }
+        }
+        member = await this.memberRepo.save(member);
+      }
+      return member;
+    } catch (error) {
+      this.logger.error(`Error while getting or creating member: ${error}`);
+      throw error;
     }
-    this.logger.debug(memberProject);
-
-    return memberProject
   }
 
+  async getPlatforms(query: string = ''): Promise<string[]> {
+    this.logger.debug(`Get platforms with query: ${query}`)
+    return this.platformRepo.find({ where: { name: ILike(`%${query}%`) } }).then(platforms => platforms.map(platform => platform.name));
+  }
 
-  async createProject(data: { member: any, project: CreateProjectDto }) {
-    let member = await this.saveMemberIfNotExist(
-      data.member.email,
-      data.member.given_name,
-      data.member.family_name);
+  private async getOrCreatePlatforms(platforms?: string[]) {
+    this.logger.debug(`Get or create platforms: ${JSON.stringify(platforms)}`)
+    if (!platforms) {
+      return
+    }
+    if (platforms.length === 0) {
+      return [];
+    }
+    return this.platformRepo.save(platforms.map(platform => {return { name: platform }}));
+  }
 
-    this.logger.debug(member)
+  async createProject(projectDto: CreateProjectDto): Promise<ProjectDto> {
+    this.logger.debug(`Create project: ${projectDto.name}`)
 
-    let project = this.projectRepo.create(data.project);
+
+    let project = new ProjectEntity();
+    project.name = projectDto.name;
+    project.description = projectDto.description;
+    project.projectType = projectDto.projectType ?? ProjectType.PRODUCT;
+
+    this.enforceProjectRestrictions({projectType: project.projectType, platforms: projectDto.platforms});
+
+    let [member, platforms] = await Promise.all([
+      this.getOrCreateMember(projectDto.username, false), 
+      this.getOrCreatePlatforms(projectDto.platforms)
+    ]);
+    
+    project.platforms = platforms;
 
     try {
       project = await this.projectRepo.save(project);
     } catch (error) {
-      if (error.code = '23505') {
-        this.logger.warn(error);
-        throw new ConflictException("Component Name already exist");
+      this.logger.error(`Error while saving project: ${error}`);
+      if (error.code === '23505') { // Unique constraint violation error code for PostgreSQL
+        throw new ConflictException('Project name already exists');
       }
+      throw error;
     }
+
+    this.logger.debug(`Member: ${member}`)
 
     let mp = new MemberProjectEntity();
     mp.member = member;
@@ -107,38 +247,135 @@ export class ProjectManagementService {
     mp.role = RoleInProject.PROJECT_OWNER;
 
     mp = await this.memberProjectRepo.save(mp);
-    this.logger.debug(`project saved! ${mp}`)
+    this.logger.debug(`MemberProject: ${mp}`)
+
     return new ProjectDto().fromProjectEntity(project)
   }
 
-  async addMemberToProject(data: { user: any, projectMember: ProjectMemberDto }): Promise<MemberProjectResDto> {
-    const memberProject = await this.isProjectAdmin(data.user.email, data.projectMember.projectId)
+  async editProject(dto: EditProjectDto): Promise<ProjectDto>{
+    this.logger.debug(`Edit project: ${dto.projectId}`)
+ 
+    const project = await this.projectRepo.findOneBy({ id: dto.projectId });
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+    
+    project.projectType = dto.projectType ?? project.projectType;
 
-    let member = await this.saveMemberIfNotExist(
-      data.projectMember.email,
-      data.projectMember?.firstName,
-      data.projectMember?.lastName);
-    this.logger.debug(member);
+    this.enforceProjectRestrictions({
+      projectType: project.projectType, 
+      platforms: dto.platforms ?? project.platforms.map(platform => platform.name)
+    });
 
-    let mp = new MemberProjectEntity();
-    mp.member = member;
-    mp.project = memberProject.project;
-    mp.role = RoleInProject.PROJECT_MEMBER;
-    this.logger.debug(mp);
-    let mpRes = await this.memberProjectRepo.save(mp);
+    project.platforms = await this.getOrCreatePlatforms(dto.platforms) ?? project.platforms;
 
-    return new MemberProjectResDto().fromMemberProjectEntity(mpRes)
+    project.name = dto.name;
+    project.description = dto.description;
+    project.projectType = dto.projectType;
 
+    try {
+      await this.projectRepo.save(project);
+      return new ProjectDto().fromProjectEntity(await this.getProjectEntity(dto.projectId));
+    }catch(error){
+      if (error.code === '23505'){
+        throw new ConflictException('Project name already exists');
+      }
+      throw error;
+    }
   }
 
-  async removeMemberFromProject(data: any) {
-    let currentUser = (await this.isProjectAdmin(data.user.email, data.projectMember.projectId)).member
-    const mp = await this.memberProjectRepo.findOne({ relations: ['member'], where: { member: { id: data.projectMember.memberId }, project: { id: data.projectMember.projectId } } })
+  private enforceProjectRestrictions(project: {projectType: ProjectType, platforms?: string[]}){
+    if (project.projectType === ProjectType.FORMATION && project.platforms?.length > 1) {
+      throw new BadRequestException('Formation projects can only have one platform');
+    }
+  }
+
+  async deleteProject(params: ProjectIdentifierParams): Promise<string> {
+    this.logger.log(`Delete project with id: ${params.projectId}`)
+    const project = await this.projectRepo.findOne({
+      select: {releases: {version: true}},
+      where: {id: params.projectId},
+      relations: {releases: true}
+    });
+    
+    if (project.releases.length > 0) {
+      this.logger.debug(`Send deleted request to upload for ${project.releases.length} releases`)
+      const releasesParams = project.releases.map(release => new ReleaseParams(params.projectId, release.version))
+      try {
+        await Promise.all(releasesParams.map(release => lastValueFrom(this.uploadClient.send(UploadTopics.DELETE_RELEASE, release))))
+      }catch (error) {
+        throw new InternalServerErrorException(error.message);
+      }
+    }
+
+    try {
+      const {raw, affected} = await this.projectRepo.delete({id: params.projectId});
+      if (affected === 0){
+        throw new NotFoundException(`Project with id ${params.projectId} not found, delete failed`);
+      }
+      return `Project '${project.name}' deleted successfully`;
+    }catch (error) {
+      if (error.code === '23503') { // foreign key violation, meaning a referenced row does not exist in the referenced table
+        throw new ConflictException('Delete Project releases failed, Try again later')
+      }
+      throw error
+    }
+    
+  }
+
+  async confirmMemberInProject(params: ProjectIdentifierParams, email: string) {
+    this.logger.debug(`Confirm member in project with email: ${email} and projectId: ${params.projectId}`)
+    const member = await this.getOrCreateMember(email, false);
+    const memberProject = await this.getMemberInProject(params.projectId, member.email);
+    if (!memberProject) {
+      throw new NotFoundException(`Member with email ${email} not found in project with id ${params.projectId}`);
+    }
+
+    memberProject.status = MemberProjectStatusEnum.ACTIVE;
+    await this.memberProjectRepo.save(memberProject);
+
+    return await this.getProjectEntity(params.projectId);
+  }
+
+  async addMemberToProject(projectMember: AddMemberToProjectDto): Promise<MemberResDto> {
+    this.logger.debug(`Add member to project: ${projectMember.email}`)
+
+    let member = await this.getOrCreateMember(projectMember.email, true).catch(error => {
+      throw new InternalServerErrorException(`Failed to add member ${projectMember.email} to project ${projectMember.projectId}, Err: ${error}`);
+    });
+
+    this.logger.debug(`Member: ${member}`)
+
+    let project = await this.getProjectEntity(projectMember.projectId);
+    this.logger.debug(`Project: ${project}`)
+
+    let mp = await this.memberProjectRepo.findOne({ where: { member: { id: member.id }, project: { id: project.id } } })
+    if (!mp) {
+      mp = new MemberProjectEntity();
+      mp.member = member;
+      mp.project = project;
+      mp.status = MemberProjectStatusEnum.INVITED;
+    } else {
+      mp.status = MemberProjectStatusEnum.ACTIVE;
+    }
+
+    mp.role = projectMember.role;
+
+    await this.memberProjectRepo.upsert(mp, ["project", "member"]);
+
+    this.logger.debug(`MemberProject: ${mp}`)
+    return new MemberResDto().fromMemberEntity(member, mp.role, mp.status)
+  }
+
+  async removeMemberFromProject(params: ProjectMemberParams, authEmail: string): Promise<string> {
+    this.logger.debug(`Remove member from project: ${params.memberId}, project: ${params.projectId}`)
+
+    const mp = await this.memberProjectRepo.findOne({ relations: ['member'], where: { member: { id: params.memberId }, project: { id: params.projectId } } })
 
     if (!mp) {
-      throw new Error("User is not a project Member");
+      throw new NotFoundException(`Member with id ${params.memberId} not found in project with id ${params.projectId}`);
 
-    } else if (mp.member.id == currentUser.id) {
+    } else if (mp.member.email == authEmail) {
       this.logger.warn("Not allowed to remove yourself");
       throw new HttpException("Not allowed to remove yourself", HttpStatus.FORBIDDEN);
 
@@ -150,36 +387,56 @@ export class ProjectManagementService {
     return "User was removed!";
   }
 
-  async editMember(data: { user: any, projectMember: EditProjectMemberDto }): Promise<MemberResDto> {
-    await this.isProjectAdmin(data.user.email, data.projectMember.projectId)
+  async editProjectMember(projectMember: EditProjectMemberDto): Promise<MemberResDto> {
+    this.logger.debug(`Edit member: ${projectMember.memberId}`)
 
-    const pm = await this.memberProjectRepo.findOne({
-      relations: ['member'],
-      where: { member: { id: data.projectMember.memberId } }
-    })
-    let member: MemberEntity;
-    let role: string;
-
-    if (pm) {
-      member = pm.member;
-      role = data.projectMember?.role;
-      if (role) {
-        if (role == RoleInProject.PROJECT_OWNER && pm.role != RoleInProject.PROJECT_OWNER) {
-          this.logger.warn("Not allowed to set member to Owner");
-          throw new HttpException("Not allowed to set member to Owner (Only one Owner Possible)", HttpStatus.FORBIDDEN);
-        }
-        pm.role = role;
-        this.memberProjectRepo.save(pm);
-      }
-    } else {
-      delete data.projectMember.role
-      member = await this.memberRepo.findOne({ where: { id: data.projectMember.memberId } });
-      if (!member) {
-        throw new Error('User not found');
-      }
+    // TODO is not clear 
+    if (projectMember.role == RoleInProject.PROJECT_OWNER) {
+      this.logger.warn("Not allowed to set member to Owner");
+      throw new HttpException("Not allowed to set member to Owner (Only one Owner Possible)", HttpStatus.FORBIDDEN);
     }
-    let updatedMember = await this.memberRepo.save({ ...member, ...data.projectMember });
-    return new MemberResDto().fromMemberEntity(updatedMember, role);
+
+    const mp = await this.memberProjectRepo.findOne({
+      relations: ['member'],
+      where: { member: { id: projectMember.memberId }, project: { id: projectMember.projectId } }
+    })
+    if (!mp) {
+      throw new NotFoundException(`Member with id ${projectMember.memberId} not found in project with id ${projectMember.projectId}`);
+    }
+
+    mp.role = projectMember.role;
+
+    let saved = await this.memberProjectRepo.save(mp);
+
+    return new MemberResDto().fromMemberEntity(mp.member, saved.role);
+  }
+
+
+  private async getMemberByEmail(email: string): Promise<MemberEntity> {
+    let member = await this.memberRepo.findOneBy({ email })
+    if (!member) {
+      throw new NotFoundException(`Member with email ${email} not found`);
+    }
+    return member;
+  }
+
+  async getMemberProjectPreferences(params: ProjectIdentifierParams, email: string): Promise<ProjectMemberPreferencesDto> {
+    this.logger.debug(`Get preferences for users: ${email}`)
+    const member = await this.memberProjectRepo.findOneBy({ member: { email }, project: { id: params.projectId } })
+    return ProjectMemberPreferencesDto.fromMemberEntity(member);
+  }
+
+  async updateMemberProjectPreferences(dto: ProjectMemberPreferencesDto, email: string): Promise<ProjectMemberPreferencesDto> {
+    this.logger.debug(`Update preferences for users: ${email}`)
+    const member = await this.memberProjectRepo.findOneBy({ member: { email }, project: { id: dto.projectId } })
+    if (!member) {
+      throw new NotFoundException(`Member with email ${email} not found`);
+    }
+
+    member.pinned = dto.pinned;
+
+    const entity = await this.memberProjectRepo.save(member);
+    return ProjectMemberPreferencesDto.fromMemberEntity(entity);
   }
 
   // todo get default project
@@ -194,8 +451,8 @@ export class ProjectManagementService {
 
     const query = memberProjectBuilder
       .select('member_project.role')
+      .select('member_project.status')
       .leftJoinAndSelect('member_project.project', 'project')
-      .leftJoinAndSelect('project.regulations', 'regulation')
       .leftJoinAndSelect('member_project.member', 'member')
       .where(`member_project.projectId IN (${subQuery})`)
 
@@ -207,14 +464,21 @@ export class ProjectManagementService {
 
       let tokens: string = memberProject.project_tokens
 
+      if (memberProject.member_email == email) {
+        if (memberProject.member_project_status === MemberProjectStatusEnum.INVITED) {
+          acc.invitedProjects.push(projectId)
+        } else if (memberProject.member_project_status === MemberProjectStatusEnum.INACTIVE) {
+          acc.inactiveProjects.push(projectId)
+        }
+      }
+
       if (!acc.projects[projectId]) {
-        let prj = new ProjectDto()
+        let prj = new DetailedProjectDto()
         prj.id = projectId;
         prj.name = memberProject.project_name;
         prj.description = memberProject.project_description;
-        prj.tokens = tokens != null ? tokens.split(',') : undefined
+        // prj.tokens = tokens != null ? tokens.split(',') : undefined
         prj.members = [];
-        prj.regulation = [];
 
         acc.projects[projectId] = prj
       }
@@ -234,14 +498,51 @@ export class ProjectManagementService {
       }
 
       return acc;
-    }, { member: null, projects: {} });
+    }, { member: null, projects: {}, invitedProjects: [], inactiveProjects: [] });
 
-
+    // TODO write test for this
+    // imaging active invited and inactive projects
     let mbProjectsRes = new MemberProjectsResDto()
-    mbProjectsRes.projects = Object.values(groupedResult.projects);
     mbProjectsRes.member = groupedResult.member;
+    mbProjectsRes.invitedProjects = groupedResult.invitedProjects.map((id: number) => {
+      const pro = groupedResult.projects[id];
+      delete groupedResult.projects[id];
+      return pro
+    })
+
+    groupedResult.inactiveProjects.map((id: number) => {
+      delete groupedResult.projects[id];
+    })
+
+    mbProjectsRes.projects = Object.values(groupedResult.projects);
+
     return mbProjectsRes;
   }
+
+  private async getProjectEntity(projectId: number): Promise<ProjectEntity>{
+    const project = await this.projectRepo.findOneBy({ id: projectId });
+    if (!project) {
+      throw new NotFoundException(`Project: ${projectId} not found`);
+    }
+    return project
+  }
+
+  async getProject(params: ProjectIdentifierParams, email: string): Promise<DetailedProjectDto> { 
+    const project = await this.projectRepo.findOne({
+      where: {id: params.projectId},
+      relations: {memberProject: {member: true}, tokens: true},
+    });
+
+    if (!project) {
+      throw new NotFoundException(`Project: '${params.projectId}' not found`);
+    }
+
+    const dto = new DetailedProjectDto().fromProjectEntity(project);
+    const member = project.memberProject.find(mp => mp.member.email === email);
+    dto.memberContext = new ProjectMemberContextDto().fromMemberProjectEntity(member);
+    return dto
+  }
+
 
   async getDevicesByCatalogId(catalogId: string): Promise<DeviceResDto[]> {
     this.logger.debug('Get devices by catalogId: ' + catalogId)
@@ -256,7 +557,7 @@ export class ProjectManagementService {
   }
 
   async getDevicesByProject(projectId: number): Promise<DeviceResDto[]> {
-    const comps = await this.uploadVersionEntity.find({
+    const comps = await this.uploadVersionRepo.find({
       select: ['catalogId'],
       where: {
         project: {
@@ -286,30 +587,11 @@ export class ProjectManagementService {
     return devices.map(dvs => new DeviceResDto().formEntity(dvs));
   }
 
-  async createToken(data: { user: any, projectId: number, memberProject: MemberProjectEntity }): Promise<ProjectTokenDto> {
-    const memberProject = data.memberProject;
-
-    const token = this.generateToken(data.user.email, data.projectId, memberProject.project.name);
-    this.logger.log(`Generated Token: ${token.projectToken}`)
-    if (memberProject.project.tokens == null) {
-      memberProject.project.tokens = [token.projectToken];
-    } else {
-      memberProject.project.tokens.push(token.projectToken);
-    }
-    this.projectRepo.save(memberProject.project);
-    return token
-  }
-
-  private generateToken(email: string, projectId: number, projectName: string): ProjectTokenDto {
-    const payload = { email: email, projectId: projectId, projectName: projectName }
-
-    return { projectToken: this.jwtService.sign({ data: payload }) } as ProjectTokenDto;
-  }
-
-  async getProjectReleases(data: { user: any, projectId: number, memberProject: MemberProjectEntity }): Promise<ProjectReleasesDto[]> {
-    let uploadVersions = await this.uploadVersionEntity.find({
+  async getProjectReleases(projectId: number): Promise<ProjectReleasesDto[]> {
+    this.logger.log(`Get all releases for project with id ${projectId}`);
+    let uploadVersions = await this.uploadVersionRepo.find({
       where: {
-        project: { id: data.projectId }
+        project: { id: projectId }
       }
     })
 
@@ -321,90 +603,170 @@ export class ProjectManagementService {
   }
 
 
-  getRegulationTypes(): Promise<RegulationTypeDto[]> {
-    this.logger.log('Get all regulation types');
-    return this.regulationTypeRepo.find();
+  async getProjectTokens(projectId: number): Promise<ProjectTokenDto[]>{
+    this.logger.log(`Get all tokens for project with id ${projectId}`);
+    const tokens = await this.tokenRepo.find({where: { project: { id: projectId } }})
+    return tokens.map(t => ProjectTokenDto.fromProjectTokenEntity(t))
   }
 
-  async getProjectRegulations(projectId: number): Promise<RegulationDto[]> {
-    this.logger.log('Get project regulations');
-    return this.regulationRepo.find({
-      where: {
-        project: { id: projectId }
-      },
-      relations: {project: true}, 
-      select: {project: {id: true}},
-      order: {order: 'ASC'}
-    }).then(regulation => regulation.map(r => new RegulationDto().fromRegulationEntity(r)));
-  }
-
-  async createRegulation(regulation: CreateRegulationDto): Promise<RegulationDto> {
-    this.logger.log('Create regulation');
-
-    const regulationType = await this.regulationTypeRepo.findOne({ where: { id: regulation.typeId } });
-    if (!regulationType) {
-      throw new NotFoundException(`Regulation type with id ${regulation.typeId} not found`);
+  async getProjectTokenById(params: TokenParams): Promise<ProjectTokenDto> {
+    this.logger.log(`Get token with id ${params.tokenId} for project with id ${params.projectId}`);
+    const token = await this.tokenRepo.findOne({ where: { id: params.tokenId, project: { id: params.projectId } } })
+    if (!token) {
+      throw new NotFoundException(`Token with id ${params.tokenId} for project with id ${params.projectId} not found`)
     }
-
-    const project = await this.projectRepo.findOne({ where: { id: regulation.projectId } });
-    if (!project) {
-      throw new NotFoundException(`Project with id ${regulation.projectId} not found`);
-    }
-
-    const newRegulation = new RegulationEntity();
-    newRegulation.name = regulation.name;
-    newRegulation.description = regulation.description;
-    newRegulation.config = regulation.config;
-    newRegulation.order = regulation.order;
-    newRegulation.type = regulationType;
-    newRegulation.project = project;
-    
-    return this.regulationRepo.save(newRegulation).then(r => new RegulationDto().fromRegulationEntity(r));
+    return ProjectTokenDto.fromProjectTokenEntity(token)
   }
 
-  async updateRegulation(regulation: UpdateRegulationDto): Promise<RegulationDto> {
-    this.logger.log('Update regulation');
-   
-    const currentRegulation = await this.regulationRepo.findOne({ where: { id: regulation.id } });
-    if (!currentRegulation) {
-      throw new NotFoundException(`Regulation with id ${regulation.id} not found`);
+  async createToken(dto: CreateProjectTokenDto): Promise<ProjectTokenDto> {
+    this.logger.log(`Create token for project with id ${dto.projectId}`);
+    let project = await this.getProjectEntity(dto.projectId);
+
+    const expirationDate = dto?.expirationDate ? new Date(dto?.expirationDate) : null;
+    const token = this.generateToken(
+      dto.projectId,
+      project.name,
+      dto.name,
+      dto.neverExpires ?? false,
+      expirationDate
+    );
+
+    this.logger.log(`Generated Token: ${token.slice(token.length - 10)}`);
+
+    const yearFromNow = new Date();
+    yearFromNow.setFullYear(yearFromNow.getFullYear() + 1);
+
+    const projectToken = new ProjectTokenEntity();
+    projectToken.token = token;
+    projectToken.name = dto.name;
+    projectToken.neverExpires = dto.neverExpires ?? false;
+    projectToken.expirationDate = dto.neverExpires ? null : dto?.expirationDate ?? yearFromNow;
+    projectToken.project = project;
+    try {
+      const savedProjectToken = await this.tokenRepo.save(projectToken);
+      return ProjectTokenDto.fromProjectTokenEntity(savedProjectToken);
+    } catch (error) {
+      throw new InternalServerErrorException(error);
     }
-    
-    const regulationEntity = new RegulationEntity();
-    regulationEntity.name = regulation?.name;
-    regulationEntity.description = regulation?.description;
-    regulationEntity.config = regulation?.config;
-    regulationEntity.order = regulation?.order;
-    if (regulation?.typeId) {
-      const regulationType = await this.regulationTypeRepo.findOne({ where: { id: regulation.typeId } });
-      if (!regulationType) {
-        throw new NotFoundException(`Regulation type with id ${regulation.typeId} not found`);
-      }
-      regulationEntity.type = regulationType;
-    } 
-    
-    return this.regulationRepo.save({...currentRegulation, ...regulationEntity}).then(r => new RegulationDto().fromRegulationEntity(r));
   }
 
+  async updateProjectToken(dto: UpdateProjectTokenDto): Promise<ProjectTokenDto> {
+    this.logger.log(`Update token with id ${dto.id} for project with id ${dto.projectId}`);
+    const token = await this.tokenRepo.findOne({ where: { id: dto.id, project: { id: dto.projectId } } })
+    if (!token) {
+      throw new NotFoundException(`Token with id ${dto.id} for project with id ${dto.projectId} not found`)
+    }
+    token.name = dto.name;
+    token.isActive = dto.isActive;
+    try {
+      const savedProjectToken = await this.tokenRepo.save(token);
+      return ProjectTokenDto.fromProjectTokenEntity(savedProjectToken);
+    } catch (error) {
+      throw new InternalServerErrorException(error);
+    }
+  }
+
+
+  async deleteProjectToken(params: TokenParams): Promise<string> {
+    this.logger.log(`Delete token with id ${params.tokenId} for project with id ${params.projectId}`);
+    const {raw, affected} = await this.tokenRepo.delete({ id: params.tokenId, project: { id: params.projectId } })
+    if (affected === 0) {
+      throw new NotFoundException(`Token with id ${params.tokenId} for project with id ${params.projectId} not found`)
+    }
+    return "Token deleted successfully"
+  }
   
-  async getRegulationById(regulationId: number): Promise<RegulationDto> {
-    this.logger.log('Get regulation by id');
-    const regulation = await this.regulationRepo.findOne({ where: { id: regulationId }, relations: {project: true}, select: {project: {id: true}} });
-    console.log(regulation);
-    if (!regulation) {
-      throw new NotFoundException(`Regulation with id ${regulationId} not found`);
-    }
-    return new RegulationDto().fromRegulationEntity(regulation);
+
+  private generateToken(projectId: number, projectName: string, name: string, neverExpires: boolean, expirationDate?: Date): string {
+    this.logger.log(`Generate token for project with id ${projectId}`);
+    const payload = {projectId, projectName, name, neverExpires}
+    const expiresIn = neverExpires ? '100y' : Math.floor((expirationDate.getTime() - Date.now()) / 1000)
+    return this.jwtService.sign({ data: payload}, {expiresIn: expiresIn});
   }
 
-  async deleteRegulation(regulationId: number): Promise<string> {
-    this.logger.log('Delete regulation');
-    
-    let {raw, affected} = await this.regulationRepo.delete({ id: regulationId });
-    if (affected == 0) {
-      throw new NotFoundException(`Regulation with id ${regulationId} not found`);
+  async onProjectReleasesChanged(event: ProjectReleasesChangedEvent){
+    this.logger.debug(`onProjectReleasesChanged: for project: ${event.projectId}`);
+    try {
+          // TODO make this more efficient
+      const project = await this.getProjectEntity(event.projectId);
+      project.projectSummary['latestRelease'] = event?.latestRelease;
+      project.projectSummary['upcomingRelease'] = event?.upcomingRelease;
+      await this.projectRepo.save(project).catch(err => this.logger.error(`Error saving release changed event: ${JSON.stringify(event)}, error: ${err}`));
+    }catch(err) {
+      this.logger.error(`Error saving release changed event: ${JSON.stringify(event)}, error: ${err}`);
     }
-    return 'Regulation deleted';
+    
+  }
+
+  async getDocs(projectId: number): Promise<DocDto[]> {
+    this.logger.log(`Get docs for project with id ${projectId}`);
+    const docs = await this.docRepo.find({where: {project: {id: projectId}}});
+    return docs.map(doc => DocDto.fromDocEntity(doc));
+  }
+
+  async getDocById(params: DocsParams): Promise<DocDto> {
+    this.logger.log(`Find doc with id ${params.id} for project with id ${params.projectId}`);
+    const doc = await this.docRepo.findOneBy({id: params.id, project: {id: params.projectId}});
+    if (!doc){
+      throw new NotFoundException(`Document with id ${params.id} not found`)
+    }
+    return DocDto.fromDocEntity(doc);
+  }
+
+  async createDoc(dto: CreateDocDto): Promise<DocDto> {
+    this.logger.log(`Create doc for project: ${dto.projectId}, name: ${dto.name}`);
+    const entity = new DocEntity()
+    entity.name = dto.name
+    entity.isUrl = dto.isUrl
+    entity.project = {id: dto.projectId} as ProjectEntity
+
+    if (dto.isUrl) {
+      entity.docUrl = dto.docUrl
+      entity.readme = null
+    }else {
+      entity.docUrl = null
+      entity.readme = dto.readme
+    }
+    return this.docRepo.save(entity).then((doc) => DocDto.fromDocEntity(doc));
+  }
+
+  async updateDoc(dto: UpdateDocDto): Promise<DocDto> {
+    this.logger.log(`Update doc: ${JSON.stringify(dto)} `);
+    const entity = await this.docRepo.findOneBy({id: dto.id, project: {id: dto.projectId}})
+    if (!entity){
+      throw new NotFoundException(`Document with id ${dto.id} not found`);
+    }
+    entity.id = dto.id
+    entity.name = dto.name
+    entity.isUrl = dto.isUrl ?? entity.isUrl
+    entity.project = {id: dto.projectId} as ProjectEntity
+
+    if (entity.isUrl) {
+      entity.docUrl = dto.docUrl
+      entity.readme = null
+    }else {
+      entity.docUrl = null
+      entity.readme = dto.readme
+    }
+
+    await this.docRepo.save(entity)
+    return this.getDocById(dto);
+  }
+
+  async deleteDoc(params: DocsParams): Promise<string> {
+    this.logger.log(`Delete doc with id ${params.id} for project with id ${params.projectId}`);
+    const doc = await this.docRepo.findOneBy({id: params.id, project: {id: params.projectId}})
+    if (!doc){
+      throw new NotFoundException(`Document with id ${params.id} not found`);
+    }
+    await this.docRepo.remove(doc);
+    return `Document with id ${params.id} deleted successfully`;
+  }
+
+
+  async onModuleInit() {
+    this.uploadClient.subscribeToResponseOf([UploadTopics.DELETE_RELEASE])
+    await this.uploadClient.connect()
   }
 
 }
