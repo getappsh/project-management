@@ -22,7 +22,11 @@ import {
   CreateDocDto, 
   DocDto, 
   DocsParams, 
-  UpdateDocDto 
+  UpdateDocDto, 
+  CreatePlatformDto,
+  PlatformDto,
+  PlatformParams,
+  UpdatePlatformDto
 } from '@app/common/dto/project-management';
 import { OidcService, UserSearchDto } from '@app/common/oidc/oidc.interface';
 import { PaginatedResultDto } from '@app/common/dto/pagination.dto';
@@ -193,11 +197,6 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       this.logger.error(`Error while getting or creating member: ${error}`);
       throw error;
     }
-  }
-
-  async getPlatforms(query: string = ''): Promise<string[]> {
-    this.logger.debug(`Get platforms with query: ${query}`)
-    return this.platformRepo.find({ where: { name: ILike(`%${query}%`) } }).then(platforms => platforms.map(platform => platform.name));
   }
 
   private async getOrCreatePlatforms(platforms?: string[]) {
@@ -763,6 +762,70 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     return `Document with id ${params.id} deleted successfully`;
   }
 
+
+  // Create Platform
+  async createPlatform(dto: CreatePlatformDto): Promise<PlatformDto> {
+    this.logger.debug(`Create platform: ${dto.name}`);
+
+    const platform = new PlatformEntity();
+    platform.name = dto.name;
+    platform.description = dto.description;
+    platform.os = dto.os;
+
+    try{
+      const savedPlatform = await this.platformRepo.save(platform);
+      return PlatformDto.fromEntity(savedPlatform);
+    }catch (error) {
+      this.logger.error(`Error while saving platform: ${error}`);
+      if (error.code === '23505') { // Unique constraint violation error code for PostgreSQL
+        throw new ConflictException('Platform name already exists');
+      }
+      throw error;
+    }
+  }
+
+  async getPlatform(params: PlatformParams): Promise<PlatformDto> {
+    this.logger.debug(`Get platform with name: ${params.name}`);
+    const platform = await this.platformRepo.findOneBy({ name: params.name });
+    if (!platform) {
+      this.logger.warn(`Platform with name ${params.name} not found`);
+      throw new NotFoundException('Platform not found');
+    }
+    return PlatformDto.fromEntity(platform);
+  }
+
+
+  async getPlatforms(query: string = ''): Promise<PlatformDto[]> {
+    this.logger.debug(`Get platforms with query: ${query}`)
+    return this.platformRepo.find({ where: { name: ILike(`%${query}%`) } }).then(platforms => platforms.map(platform => PlatformDto.fromEntity(platform)));
+  }
+
+  // Update Platform
+  async updatePlatform(dto: UpdatePlatformDto): Promise<PlatformDto> {
+    this.logger.debug(`Update platform: ${dto.name}`);
+    const platform = await this.platformRepo.findOneBy({ name: dto.name });
+    if (!platform) {
+      throw new NotFoundException('Platform not found');
+    }
+    platform.name = dto.name || platform.name;
+    platform.description = dto.description || platform.description;
+    platform.os = dto.os || platform.os;
+
+    await this.platformRepo.save(platform);
+
+    return this.getPlatform({ name: platform.name });
+  }
+
+  // Delete Platform
+  async deletePlatform(params: PlatformParams): Promise<string> {
+    this.logger.debug(`Delete platform with name: ${params.name}`);
+    const platform = await this.platformRepo.findOneBy({ name: params.name });
+    if (!platform) {
+      throw new NotFoundException('Platform not found');
+    }
+    await this.platformRepo.remove(platform);
+    return `Platform ${params.name} deleted successfully`;
+  }
 
   async onModuleInit() {
     this.uploadClient.subscribeToResponseOf([UploadTopics.DELETE_RELEASE])

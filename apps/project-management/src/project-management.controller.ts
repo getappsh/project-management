@@ -22,7 +22,11 @@ import {
   UpdateOneOfManyRegulationDto,
   CreateDocDto, 
   DocsParams, 
-  UpdateDocDto
+  UpdateDocDto,
+  CreatePlatformDto,
+  PlatformParams,
+  UpdatePlatformDto,
+  PlatformDto
 } from '@app/common/dto/project-management';
 import { RpcPayload, UserContextInterceptor } from '@app/common/microservice-client';
 import * as fs from 'fs';
@@ -119,12 +123,6 @@ export class ProjectManagementController {
   getProject(@RpcPayload() params: ProjectIdentifierParams, @AuthUser("email") authEmail: string): Promise<DetailedProjectDto> {
     return this.projectManagementService.getProject(params, authEmail);
   }
-
-  @MessagePattern(ProjectManagementTopics.GET_PLATFORMS)
-  getPlatforms(@RpcPayload() query?: string): Promise<string[]> {
-    return this.projectManagementService.getPlatforms(query);
-  }
-
 
   @ValidateProjectUserAccess()
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_RELEASES)
@@ -266,6 +264,33 @@ export class ProjectManagementController {
   deleteDoc(@RpcPayload() params: DocsParams) {
     return this.projectManagementService.deleteDoc(params)
   }
+
+
+  @MessagePattern(ProjectManagementTopics.CREATE_PLATFORM)
+  createPlatform(@RpcPayload() dto: CreatePlatformDto) {
+    return this.projectManagementService.createPlatform(dto);
+  }
+
+  @MessagePattern(ProjectManagementTopics.GET_PLATFORM_BY_NAME)
+  getPlatform(@RpcPayload() params: PlatformParams) {
+    return this.projectManagementService.getPlatform(params);
+  }
+  
+  @MessagePattern(ProjectManagementTopics.GET_PLATFORMS)
+  getPlatforms(@RpcPayload() query?: string): Promise<PlatformDto[]> {
+    return this.projectManagementService.getPlatforms(query);
+  }
+  
+  @MessagePattern(ProjectManagementTopics.UPDATE_PLATFORM)
+  updatePlatform(@RpcPayload() dto: UpdatePlatformDto) {
+    return this.projectManagementService.updatePlatform(dto);
+  }
+  
+  @MessagePattern(ProjectManagementTopics.DELETE_PLATFORM)
+  deletePlatform(@RpcPayload() params: PlatformParams) {
+    return this.projectManagementService.deletePlatform(params);
+  }
+
 
   private readImageVersion() {
     let version = 'unknown'
