@@ -311,10 +311,10 @@ export function fromConfigEntity(eConfig: DeviceConfigEntity): AndroidConfigDto 
   } else {
     config = new WindowsConfigDto();
   }
-  config.lastConfigUpdateDate = eConfig.lastUpdatedDate;
   for (const key in eConfig.data) {
     config[key] = eConfig.data[key];
   }
+  config.lastConfigUpdateDate = eConfig.lastUpdatedDate;
   return config;
 }
 

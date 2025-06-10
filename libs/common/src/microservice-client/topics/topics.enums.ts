@@ -100,13 +100,6 @@ export const ProjectManagementTopics = {
     UPDATE_PROJECT_REGULATIONS: `getapp-project-management.update-project-regulations${region}`,
     DELETE_PROJECT_REGULATION: `getapp-project-management.delete-project-regulation${region}`,
 
-    // Platforms
-    GET_PLATFORMS: `getapp-project-management.get-platforms${region}`,
-    GET_PLATFORM_BY_NAME: `getapp-project-management.get-platform-by-name${region}`,
-    CREATE_PLATFORM: `getapp-project-management.create-platform${region}`,
-    UPDATE_PLATFORM: `getapp-project-management.update-platform${region}`,
-    DELETE_PLATFORM: `getapp-project-management.delete-platform${region}`,
-
     // Tokens
     GET_PROJECT_TOKENS: `getapp-project-management.get-project-tokens${region}`,
     GET_PROJECT_TOKEN_BY_ID: `getapp-project-management.get-project-token-by-id${region}`,
@@ -194,6 +187,22 @@ export const DevicesGroupTopics = {
     GET_GROUP_DEVICES: `getapp-device.group.get-devices${region}`,
     SET_GROUP_DEVICES: `getapp-device.group.set-devices${region}`,
 } as const
+
+export const DevicesHierarchyTopics = {
+    // Device Types
+    GET_DEVICE_TYPES: `getapp-device.hierarchy.get-device-types${region}`,
+    GET_DEVICE_TYPE_BY_NAME: `getapp-device.hierarchy.get-device-type-by-name${region}`,
+    CREATE_DEVICE_TYPE: `getapp-device.hierarchy.create-device-type${region}`,
+    UPDATE_DEVICE_TYPE: `getapp-device.hierarchy.update-device-type${region}`,
+    DELETE_DEVICE_TYPE: `getapp-device.hierarchy.delete-device-type${region}`,
+
+      // Platforms
+    GET_PLATFORMS: `getapp-device.hierarchy.get-platforms${region}`,
+    GET_PLATFORM_BY_NAME: `getapp-device.hierarchy.get-platform-by-name${region}`,
+    CREATE_PLATFORM: `getapp-device.hierarchy.create-platform${region}`,
+    UPDATE_PLATFORM: `getapp-device.hierarchy.update-platform${region}`,
+    DELETE_PLATFORM: `getapp-device.hierarchy.delete-platform${region}`,
+}
 
 export const DeviceBugReportTopics = {
     NEW_BUG_REPORT: `getapp-device.bug-report.new${region}`,
