@@ -72,9 +72,9 @@ function getDBAuthParams() {
     case "TNG":
       return {
         ssl: {
-          ca: [readFileSync(process.env.DB_PEM_PATH)],
-          key: [readFileSync(process.env.DB_KEY_PATH)],
-          cert: [readFileSync(process.env.DB_CERT_PATH)]
+          ca: [readFileSync(process.env.DB_PEM_PATH ?? "")],
+          key: [readFileSync(process.env.DB_KEY_PATH ?? "")],
+          cert: [readFileSync(process.env.DB_CERT_PATH ?? "")]
         }
       }
 
