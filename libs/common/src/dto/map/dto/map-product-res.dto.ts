@@ -158,7 +158,7 @@ export class MapProductResDto {
     return product
   }
 
-  static productRegionSelector(countries: string, cities: string) {
+  static productRegionSelector(countries: string, cities: string | null) {
     if (cities == null) {
       if (countries == null) {
         return ""

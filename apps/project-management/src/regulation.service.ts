@@ -57,7 +57,7 @@ export class RegulationService {
     newRegulation.name = regulation.name;
     newRegulation.description = regulation.description;
     newRegulation.config = regulation.config;
-    newRegulation.order = regulation.order;
+    newRegulation.order = regulation.order ?? 0;
     newRegulation.displayName = regulation.displayName;
     newRegulation.type = regulationType;
     newRegulation.project = project;
@@ -90,10 +90,10 @@ export class RegulationService {
       if (!regulation) {
         throw new NotFoundException(`Regulation ${entity.name} for Project ID ${projectId} not found`);
       }
-      entity.name = regulation.name;
+      entity.name = regulation?.name ?? entity.name;
       entity.description = regulation.description;
       entity.config = regulation.config;
-      entity.order = regulation.order;
+      entity.order = regulation?.order ?? entity.order;
       entity.displayName = regulation.displayName;
 
       if (regulation.config){
@@ -122,10 +122,10 @@ export class RegulationService {
     }
 
     const regulationEntity = new RegulationEntity();
-    regulationEntity.name = dto?.name;
+    regulationEntity.name = dto?.name ?? currentRegulation.name;
     regulationEntity.description = dto?.description;
     regulationEntity.config = dto?.config;
-    regulationEntity.order = dto?.order;
+    regulationEntity.order = dto?.order ?? currentRegulation.order;
     regulationEntity.displayName = dto?.displayName;
 
     if (dto?.typeId) {
