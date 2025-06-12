@@ -18,7 +18,7 @@ async function bootstrap() {
         type: MicroserviceType.PROJECT_MANAGEMENT, 
         name: MicroserviceName.PROJECT_MANAGEMENT_SERVICE
       }, 
-      MSType[process.env.MICRO_SERVICE_TYPE]),
+      MSType[process.env.MICRO_SERVICE_TYPE ?? "KAFKA"]),
       bufferLogs: true
     }
   );

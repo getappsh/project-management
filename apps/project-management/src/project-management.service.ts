@@ -59,10 +59,8 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     ? { id: projectIdentifier }
     : { name: projectIdentifier };
   }
-  
-  getMemberInProject(projectId: number, email: string): Promise<MemberProjectEntity>;
-  getMemberInProject(projectName: string, email: string): Promise<MemberProjectEntity>;
-  getMemberInProject(projectIdentifier: string | number, email: string): Promise<MemberProjectEntity> {
+
+  getMemberInProject(projectIdentifier: string | number, email: string): Promise<MemberProjectEntity | null> {
     this.logger.verbose(`Get member in project with email: ${email} and project-identifier: ${projectIdentifier}`)
     const projectCondition = this.findProjectCondition(projectIdentifier);
 
@@ -90,7 +88,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     this.logger.debug(`Get projects with query: ${JSON.stringify(query)}`)
     const { page = 1 , perPage = 10, pinned, includePinned } = query;
     
-    const pinnedQuery = {pinned: undefined};
+    const pinnedQuery: { pinned?: boolean } = { pinned: undefined };
     if (includePinned === false) {
       pinnedQuery.pinned = false;
     }
@@ -121,7 +119,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     const projects = projectsEntities.map(project => {
       const dto = new ProjectDto().fromProjectEntity(project)
       const member = project.memberProject.find(mp => mp.member.email === email);
-      dto.memberContext = new ProjectMemberContextDto().fromMemberProjectEntity(member);
+      dto.memberContext = member? new ProjectMemberContextDto().fromMemberProjectEntity(member): undefined;
       return dto
     });
 
@@ -222,7 +220,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       this.getOrCreatePlatforms(projectDto.platforms)
     ]);
     
-    project.platforms = platforms;
+    project.platforms = platforms ?? [];
 
     try {
       project = await this.projectRepo.save(project);
@@ -264,9 +262,9 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
 
     project.platforms = await this.getOrCreatePlatforms(dto.platforms) ?? project.platforms;
 
-    project.name = dto.name;
-    project.description = dto.description;
-    project.projectType = dto.projectType;
+    project.name = dto.name ?? project.name;
+    project.description = dto.description ?? project.description;
+    project.projectType = dto.projectType ?? project.projectType;
 
     try {
       await this.projectRepo.save(project);
@@ -280,7 +278,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   }
 
   private enforceProjectRestrictions(project: {projectType: ProjectType, platforms?: string[]}){
-    if (project.projectType === ProjectType.FORMATION && project.platforms?.length > 1) {
+    if (project.projectType === ProjectType.FORMATION && (project.platforms?.length ?? 0) > 1) {
       throw new BadRequestException('Formation projects can only have one platform');
     }
   }
@@ -293,7 +291,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       relations: {releases: true}
     });
     
-    if (project.releases.length > 0) {
+    if (project?.releases?.length) {
       this.logger.debug(`Send deleted request to upload for ${project.releases.length} releases`)
       const releasesParams = project.releases.map(release => new ReleaseParams(params.projectId, release.version))
       try {
@@ -308,7 +306,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       if (affected === 0){
         throw new NotFoundException(`Project with id ${params.projectId} not found, delete failed`);
       }
-      return `Project '${project.name}' deleted successfully`;
+      return `Project '${project?.name}' deleted successfully`;
     }catch (error) {
       if (error.code === '23503') { // foreign key violation, meaning a referenced row does not exist in the referenced table
         throw new ConflictException('Delete Project releases failed, Try again later')
@@ -418,6 +416,9 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   async getMemberProjectPreferences(params: ProjectIdentifierParams, email: string): Promise<ProjectMemberPreferencesDto> {
     this.logger.debug(`Get preferences for users: ${email}`)
     const member = await this.memberProjectRepo.findOneBy({ member: { email }, project: { id: params.projectId } })
+    if (!member) {
+      throw new NotFoundException(`Member with email ${email} not found in project with id ${params.projectId}`);
+    }
     return ProjectMemberPreferencesDto.fromMemberEntity(member);
   }
 
@@ -428,7 +429,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       throw new NotFoundException(`Member with email ${email} not found`);
     }
 
-    member.pinned = dto.pinned;
+    member.pinned = dto.pinned ?? member.pinned;
 
     const entity = await this.memberProjectRepo.save(member);
     return ProjectMemberPreferencesDto.fromMemberEntity(entity);
@@ -534,7 +535,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
 
     const dto = new DetailedProjectDto().fromProjectEntity(project);
     const member = project.memberProject.find(mp => mp.member.email === email);
-    dto.memberContext = new ProjectMemberContextDto().fromMemberProjectEntity(member);
+    dto.memberContext = member ? new ProjectMemberContextDto().fromMemberProjectEntity(member) : undefined;
     return dto
   }
 
@@ -617,7 +618,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     this.logger.log(`Create token for project with id ${dto.projectId}`);
     let project = await this.getProjectEntity(dto.projectId);
 
-    const expirationDate = dto?.expirationDate ? new Date(dto?.expirationDate) : null;
+    const expirationDate = dto?.expirationDate ? new Date(dto?.expirationDate) : undefined;
     const token = this.generateToken(
       dto.projectId,
       project.name,
@@ -652,7 +653,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       throw new NotFoundException(`Token with id ${dto.id} for project with id ${dto.projectId} not found`)
     }
     token.name = dto.name;
-    token.isActive = dto.isActive;
+    token.isActive = dto.isActive ?? token.isActive;
     try {
       const savedProjectToken = await this.tokenRepo.save(token);
       return ProjectTokenDto.fromProjectTokenEntity(savedProjectToken);
@@ -675,7 +676,12 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   private generateToken(projectId: number, projectName: string, name: string, neverExpires: boolean, expirationDate?: Date): string {
     this.logger.log(`Generate token for project with id ${projectId}`);
     const payload = {projectId, projectName, name, neverExpires}
-    const expiresIn = neverExpires ? '100y' : Math.floor((expirationDate.getTime() - Date.now()) / 1000)
+    const expiresIn = neverExpires
+      ? '100y'
+      : expirationDate
+        ? Math.floor((expirationDate.getTime() - Date.now()) / 1000)
+        : '1y';
+
     return this.jwtService.sign({ data: payload}, {expiresIn: expiresIn});
   }
 
@@ -732,7 +738,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       throw new NotFoundException(`Document with id ${dto.id} not found`);
     }
     entity.id = dto.id
-    entity.name = dto.name
+    entity.name = dto.name ?? entity.name
     entity.isUrl = dto.isUrl ?? entity.isUrl
     entity.project = {id: dto.projectId} as ProjectEntity
 
