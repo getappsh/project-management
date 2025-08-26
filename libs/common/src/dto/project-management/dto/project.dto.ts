@@ -27,11 +27,15 @@ export class BaseProjectDto {
   @ApiProperty({ required: false, description: 'Status of the project (active, completed, on-hold)' })
   status?: string; // Needs to be an enum
 
+  @ApiProperty({ required: false, description: 'Label name assigned to the project' })
+  labelName?: string;
+
   fromProjectEntity(project: ProjectEntity) {
     this.id = project.id;
     this.name = project.name;
     this.description = project.description;
     this.projectType = project.projectType;
+    // this.labelName = project.label?.name; // Will be populated by service layer
     // this.status = project.status;
     return this;
   }
@@ -225,6 +229,11 @@ export class CreateProjectDto {
   @IsEnum(ProjectType)
   @IsOptional()
   projectType: ProjectType = ProjectType.PRODUCT;
+
+  @IsString()
+  @IsOptional()
+  @ApiProperty({ required: false, description: 'Label name to assign to the project' })
+  labelName?: string;
 
   username: string;
 }
