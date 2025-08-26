@@ -1,4 +1,4 @@
-import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity, DocEntity, PlatformEntity, ProjectType } from '@app/common/database/entities';
+import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity, DocEntity, PlatformEntity, ProjectType, LabelEntity } from '@app/common/database/entities';
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -23,7 +23,10 @@ import {
   DocDto, 
   DocsParams, 
   UpdateDocDto,
+  LabelDto,
+  LabelNameDto
 } from '@app/common/dto/project-management';
+import { ErrorCode, AppErrorException } from '@app/common/dto/error';
 import { OidcService, UserSearchDto } from '@app/common/oidc/oidc.interface';
 import { PaginatedResultDto } from '@app/common/dto/pagination.dto';
 import { ProjectAccessService } from '@app/common/utils/project-access';
@@ -47,6 +50,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     @InjectRepository(ProjectTokenEntity) private readonly tokenRepo: Repository<ProjectTokenEntity>,
     @InjectRepository(DeviceEntity) private readonly deviceRepo: Repository<DeviceEntity>,
     @InjectRepository(DocEntity) private readonly docRepo: Repository<DocEntity>,
+    @InjectRepository(LabelEntity) private readonly labelRepo: Repository<LabelEntity>,
     @Inject("OidcProviderService") private readonly oidcService: OidcService,
     @Inject(MicroserviceName.UPLOAD_SERVICE) private readonly uploadClient: MicroserviceClient,
   ) { }
@@ -204,6 +208,21 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     return this.platformRepo.save(platforms.map(platform => {return { name: platform }}));
   }
 
+  async getOrCreateLabel(label: string): Promise<LabelEntity> {
+    this.logger.debug(`Get or create label: ${label}`)
+
+    // TODO check to use the exist fun to create and get label
+    
+    let existingLabel = await this.labelRepo.findOneBy({ name: label });
+    if (existingLabel) {
+      return existingLabel;
+    }
+    
+    // Create new label if it doesn't exist
+    const newLabel = this.labelRepo.create({ name: label });
+    return await this.labelRepo.save(newLabel);
+  }
+
   async createProject(projectDto: CreateProjectDto): Promise<ProjectDto> {
     this.logger.debug(`Create project: ${projectDto.name}`)
 
@@ -215,12 +234,16 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
 
     this.enforceProjectRestrictions({projectType: project.projectType, platforms: projectDto.platforms});
 
-    let [member, platforms] = await Promise.all([
+    let [member, platforms, label] = await Promise.all([
       this.getOrCreateMember(projectDto.username, false), 
-      this.getOrCreatePlatforms(projectDto.platforms)
+      this.getOrCreatePlatforms(projectDto.platforms),
+      projectDto.label ? this.getOrCreateLabel(projectDto.label) : Promise.resolve(null)
     ]);
     
     project.platforms = platforms ?? [];
+    if (label) {
+      project.label = label;
+    }
 
     try {
       project = await this.projectRepo.save(project);
@@ -265,6 +288,17 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     project.name = dto.name ?? project.name;
     project.description = dto.description ?? project.description;
     project.projectType = dto.projectType ?? project.projectType;
+
+    // Handle label assignment
+    if (dto.label !== undefined) {
+      if (dto.label === null || dto.label === '') {
+        // Remove label from project
+        project.label = null;
+      } else {
+        // Assign label to project
+        project.label = await this.getOrCreateLabel(dto.label);
+      }
+    }
 
     try {
       await this.projectRepo.save(project);
@@ -526,7 +560,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   async getProject(params: ProjectIdentifierParams, email: string): Promise<DetailedProjectDto> { 
     const project = await this.projectRepo.findOne({
       where: {id: params.projectId},
-      relations: {memberProject: {member: true}, tokens: true},
+      relations: {memberProject: {member: true}, tokens: true, label: true},
     });
 
     if (!project) {
@@ -762,6 +796,87 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     }
     await this.docRepo.remove(doc);
     return `Document with id ${params.id} deleted successfully`;
+  }
+
+  // LABEL METHODS
+  async getLabels(query?: LabelNameDto): Promise<LabelDto[]> {
+    this.logger.debug(`Getting labels with query: ${JSON.stringify(query)}`);
+    
+    const queryBuilder = this.labelRepo.createQueryBuilder('label');
+
+    if (query?.name) {
+      queryBuilder.where('label.name ILIKE :name', { name: `%${query.name}%` });
+    }
+    
+    queryBuilder.orderBy('label.name', 'ASC');
+    
+    const labels = await queryBuilder.getMany();
+    
+    return labels.map(label => LabelDto.fromLabelEntity(label));
+  }
+
+  async createLabel(dto: LabelNameDto): Promise<LabelDto> {
+    this.logger.debug(`Creating label: ${dto.name}`);
+    
+    // Check if label with this name already exists
+    const existingLabel = await this.labelRepo.findOneBy({ name: dto.name });
+    if (existingLabel) {
+      throw AppErrorException.conflict(
+        ErrorCode.PM_LABEL_ALREADY_EXISTS,
+        `Label with name '${dto.name}' already exists`
+      );
+    }
+    
+    const label = this.labelRepo.create({ name: dto.name });
+    const savedLabel = await this.labelRepo.save(label);
+    
+    return LabelDto.fromLabelEntity(savedLabel)
+  }
+
+  async updateLabel(id: number, dto: LabelNameDto): Promise<LabelDto> {
+    this.logger.debug(`Updating label ${id} with data: ${JSON.stringify(dto)}`);
+    
+    const label = await this.labelRepo.findOneBy({ id });
+    if (!label) {
+      throw AppErrorException.notFound(
+        ErrorCode.PM_LABEL_NOT_FOUND,
+        `Label with id ${id} not found`
+      );
+    }
+    
+    label.name = dto.name;
+    const savedLabel = await this.labelRepo.save(label);
+    
+    return LabelDto.fromLabelEntity(savedLabel);
+  }
+
+  async deleteLabel(id: number): Promise<string> {
+    this.logger.debug(`Deleting label with ID: ${id}`);
+    
+    const label = await this.labelRepo.findOneBy({ id });
+    if (!label) {
+      throw AppErrorException.notFound(
+        ErrorCode.PM_LABEL_NOT_FOUND,
+        `Label with id ${id} not found`
+      );
+    }
+    
+    try {
+      await this.labelRepo.remove(label);
+      return `Label '${label.name}' deleted successfully`;
+    } catch (error) {
+      if (error.code === '23503') { // Foreign key constraint violation
+        throw AppErrorException.conflict(
+          ErrorCode.PM_LABEL_IN_USE,
+          `Cannot delete label '${label.name}' because it is still being used by one or more projects`
+        );
+      }
+      this.logger.error(`Error deleting label with ID ${id}: ${error.message}`);
+      throw AppErrorException.internalServerError(
+        ErrorCode.PM_OTHER,
+        `Failed to delete label '${label.name}' due to an unexpected error`
+      );
+    }
   }
 
   async onModuleInit() {

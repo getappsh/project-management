@@ -23,6 +23,7 @@ import {
   CreateDocDto, 
   DocsParams, 
   UpdateDocDto,
+  LabelNameDto,
 } from '@app/common/dto/project-management';
 import { RpcPayload, UserContextInterceptor } from '@app/common/microservice-client';
 import * as fs from 'fs';
@@ -139,6 +140,32 @@ export class ProjectManagementController {
   @MessagePattern(ProjectManagementTopics.GET_DEVICES_BY_PLATFORM)
   getDevicesByPlatform(@RpcPayload("stringValue") platform: string): Promise<DeviceResDto[]> {
     return this.projectManagementService.getDevicesByPlatform(platform);
+  }
+
+  // labels
+
+  @MessagePattern(ProjectManagementTopics.GET_LABELS)
+  getLabels(@RpcPayload() query?: LabelNameDto) {
+    this.logger.debug(`Getting labels with query: ${JSON.stringify(query)}`);
+    return this.projectManagementService.getLabels(query);
+  }
+
+  @MessagePattern(ProjectManagementTopics.CREATE_LABEL)
+  createLabel(@RpcPayload() dto: LabelNameDto) {
+    this.logger.debug(`Creating label: ${dto.name}`);
+    return this.projectManagementService.createLabel(dto);
+  }
+
+  @MessagePattern(ProjectManagementTopics.UPDATE_LABEL)
+  updateLabel(@RpcPayload() data: { id: number } & LabelNameDto) {
+    this.logger.debug(`Updating label ${data.id} with data: ${JSON.stringify(data)}`);
+    return this.projectManagementService.updateLabel(data.id, data);
+  }
+
+  @MessagePattern(ProjectManagementTopics.DELETE_LABEL)
+  deleteLabel(@RpcPayload() data: { id: number }) {
+    this.logger.debug(`Deleting label with ID: ${data.id}`);
+    return this.projectManagementService.deleteLabel(data.id);
   }
 
   // regulations

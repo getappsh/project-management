@@ -28,19 +28,20 @@ export class BaseProjectDto {
   status?: string; // Needs to be an enum
 
   @ApiProperty({ required: false, description: 'Label name assigned to the project' })
-  labelName?: string;
+  label?: string;
 
   fromProjectEntity(project: ProjectEntity) {
     this.id = project.id;
     this.name = project.name;
     this.description = project.description;
     this.projectType = project.projectType;
-    // this.labelName = project.label?.name; // Will be populated by service layer
+    this.label = project.label?.name;
     // this.status = project.status;
+
     return this;
   }
 
-  toString(){
+  toString() {
     return JSON.stringify(this)
   }
 
@@ -60,7 +61,7 @@ export class ProjectMemberContextDto {
     return this;
   }
 
-  toString(){
+  toString() {
     return JSON.stringify(this)
   }
 
@@ -92,7 +93,7 @@ export class MinimalReleaseDto {
     return dto;
   }
 
-  toString(){
+  toString() {
     return JSON.stringify(this)
   }
 
@@ -107,7 +108,7 @@ export class ProjectReleasesChangedEvent {
 
   upcomingRelease?: MinimalReleaseDto;
 
-  toString(){
+  toString() {
     return JSON.stringify(this)
   }
 
@@ -122,7 +123,7 @@ export class ProjectSummaryDto {
   @ApiProperty({ required: false, description: 'Upcoming release of the project' })
   upcomingRelease?: MinimalReleaseDto
 
-  toString(){
+  toString() {
     return JSON.stringify(this)
   }
 }
@@ -186,10 +187,11 @@ export class DetailedProjectDto extends ProjectDto {
     this.createdAt = project.createdDate;
     this.members = project.memberProject?.map(memberProject => new MemberResDto().fromMemberProjectEntity(memberProject));
     this.tokens = project.tokens?.map(token => ProjectTokenDto.fromProjectTokenEntity(token))
+
     return this;
   }
 
-  toString(){
+  toString() {
     return JSON.stringify(this)
   }
 
@@ -233,7 +235,7 @@ export class CreateProjectDto {
   @IsString()
   @IsOptional()
   @ApiProperty({ required: false, description: 'Label name to assign to the project' })
-  labelName?: string;
+  label?: string;
 
   username: string;
 }

@@ -1,4 +1,4 @@
-import { Column, Entity, Index, JoinTable, ManyToMany, OneToMany } from "typeorm";
+import { Column, Entity, Index, JoinTable, ManyToMany, OneToMany, ManyToOne, JoinColumn } from "typeorm";
 import { BaseEntity } from "./base.entity";
 import { MemberProjectEntity } from "./member_project.entity";
 import { RegulationEntity } from "./regulation.entity";
@@ -8,6 +8,7 @@ import { DocEntity } from "./document.entity";
 import { ProjectType } from "./enums.entity";
 import { DeviceTypeEntity } from "./device-type.entity";
 import { PlatformEntity } from "./platform.entity";
+import { LabelEntity } from "./label.entity";
 
 @Entity("project")
 export class ProjectEntity extends BaseEntity{
@@ -53,6 +54,10 @@ export class ProjectEntity extends BaseEntity{
     
     @ManyToMany(() => DeviceTypeEntity, deviceType => deviceType.projects)
     deviceTypes: DeviceTypeEntity[];
+
+    @ManyToOne(() => LabelEntity, label => label.projects, { nullable: true })
+    @JoinColumn({ name: "label_id" })
+    label: LabelEntity | null;
 
     toString(){
         return JSON.stringify(this)
