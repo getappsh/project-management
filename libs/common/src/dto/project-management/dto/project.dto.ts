@@ -15,8 +15,11 @@ export class BaseProjectDto {
   @ApiProperty({ description: 'Unique identifier of the project' })
   id: number;
 
-  @ApiProperty({ description: 'Name of the project' })
+  @ApiProperty({ description: 'Unique slug name of the project' })
   name: string;
+
+  @ApiProperty({ required: false, description: "Human-friendly name of the project (not unique)" })
+  projectName?: string;
 
   @ApiProperty({ required: false })
   description?: string;
@@ -33,6 +36,7 @@ export class BaseProjectDto {
   fromProjectEntity(project: ProjectEntity) {
     this.id = project.id;
     this.name = project.name;
+    this.projectName = project.projectName;
     this.description = project.description;
     this.projectType = project.projectType;
     this.label = project.label?.name;

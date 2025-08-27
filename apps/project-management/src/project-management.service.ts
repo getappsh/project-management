@@ -229,6 +229,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
 
     let project = new ProjectEntity();
     project.name = projectDto.name;
+    project.projectName = projectDto.projectName;
     project.description = projectDto.description;
     project.projectType = projectDto.projectType ?? ProjectType.PRODUCT;
 
@@ -286,6 +287,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     project.platforms = await this.getOrCreatePlatforms(dto.platforms) ?? project.platforms;
 
     project.name = dto.name ?? project.name;
+    project.projectName = dto.projectName ?? project.projectName;
     project.description = dto.description ?? project.description;
     project.projectType = dto.projectType ?? project.projectType;
 
