@@ -203,16 +203,21 @@ export class CreateProjectDto {
 
   @IsString()
   @IsNotEmpty()
-  @ApiProperty()
+  @ApiProperty({ description: "Unique identifier for the project (slug)" })
   @IsValidStringFor(Pattern.SINGLE_WORD)
   @IsValidStringFor(Pattern.NOT_ONLY_NUMBERS)
   @IsValidStringFor(Pattern.NO_AT_SYMBOL)
   name: string;
 
+  @ApiProperty({ required: false, description: "Human-friendly name of the project (not unique)" })
+  @IsOptional()
+  @IsString()
+  projectName?: string;
+
   @IsString()
   @IsOptional()
   @ApiProperty({ required: false })
-  description: string;
+  description?: string;
 
 
   @ApiProperty({ required: false })
