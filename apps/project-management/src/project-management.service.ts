@@ -1,4 +1,4 @@
-import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity, DocEntity, PlatformEntity, ProjectType } from '@app/common/database/entities';
+import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity, DocEntity, PlatformEntity, ProjectType, LabelEntity } from '@app/common/database/entities';
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -19,11 +19,14 @@ import {
   EditProjectDto,
   ProjectMemberContextDto,
   ProjectReleasesChangedEvent,
-  CreateDocDto, 
-  DocDto, 
-  DocsParams, 
+  CreateDocDto,
+  DocDto,
+  DocsParams,
   UpdateDocDto,
+  LabelDto,
+  LabelNameDto
 } from '@app/common/dto/project-management';
+import { ErrorCode, AppErrorException } from '@app/common/dto/error';
 import { OidcService, UserSearchDto } from '@app/common/oidc/oidc.interface';
 import { PaginatedResultDto } from '@app/common/dto/pagination.dto';
 import { ProjectAccessService } from '@app/common/utils/project-access';
@@ -34,8 +37,8 @@ import { lastValueFrom } from 'rxjs';
 
 
 @Injectable()
-export class ProjectManagementService implements ProjectAccessService, OnModuleInit{
-  
+export class ProjectManagementService implements ProjectAccessService, OnModuleInit {
+
   private readonly logger = new Logger(ProjectManagementService.name);
   constructor(
     private readonly jwtService: JwtService,
@@ -47,6 +50,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     @InjectRepository(ProjectTokenEntity) private readonly tokenRepo: Repository<ProjectTokenEntity>,
     @InjectRepository(DeviceEntity) private readonly deviceRepo: Repository<DeviceEntity>,
     @InjectRepository(DocEntity) private readonly docRepo: Repository<DocEntity>,
+    @InjectRepository(LabelEntity) private readonly labelRepo: Repository<LabelEntity>,
     @Inject("OidcProviderService") private readonly oidcService: OidcService,
     @Inject(MicroserviceName.UPLOAD_SERVICE) private readonly uploadClient: MicroserviceClient,
   ) { }
@@ -56,8 +60,8 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
 
   private findProjectCondition(projectIdentifier: number | string) {
     return typeof projectIdentifier === 'number'
-    ? { id: projectIdentifier }
-    : { name: projectIdentifier };
+      ? { id: projectIdentifier }
+      : { name: projectIdentifier };
   }
 
   getMemberInProject(projectIdentifier: string | number, email: string): Promise<MemberProjectEntity | null> {
@@ -79,15 +83,15 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     if (!project) {
       throw new ForbiddenException('Not Allowed in this project');
     }
-    
+
     return project;
   }
 
 
   async getProjects(query: GetProjectsQueryDto, email: string): Promise<PaginatedResultDto<ProjectDto>> {
     this.logger.debug(`Get projects with query: ${JSON.stringify(query)}`)
-    const { page = 1 , perPage = 10, pinned, includePinned } = query;
-    
+    const { page = 1, perPage = 10, pinned, includePinned } = query;
+
     const pinnedQuery: { pinned?: boolean } = { pinned: undefined };
     if (includePinned === false) {
       pinnedQuery.pinned = false;
@@ -97,29 +101,29 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     }
 
     const [projectsId, count] = await this.projectRepo.findAndCount({
-      select: {id: true},
+      select: { id: true },
       where: {
         memberProject: {
-          member: {email: email},
+          member: { email: email },
           ...pinnedQuery
         },
       }
     });
 
     const projectsEntities = await this.projectRepo.find({
-      select: {memberProject: true, releases: {catalogId: true}},
+      select: { memberProject: true, releases: { catalogId: true } },
       where: {
         id: In(projectsId.map(project => project.id))
       },
-      relations: {memberProject: {member: true}, releases: true},
+      relations: { memberProject: { member: true }, releases: true, label: true },
       skip: (page - 1) * perPage,
       take: perPage,
     })
-    
+
     const projects = projectsEntities.map(project => {
       const dto = new ProjectDto().fromProjectEntity(project)
       const member = project.memberProject.find(mp => mp.member.email === email);
-      dto.memberContext = member? new ProjectMemberContextDto().fromMemberProjectEntity(member): undefined;
+      dto.memberContext = member ? new ProjectMemberContextDto().fromMemberProjectEntity(member) : undefined;
       return dto
     });
 
@@ -135,18 +139,18 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   // TODO status not implemented
   async searchProjects(dto: SearchProjectsQueryDto, email: string): Promise<PaginatedResultDto<BaseProjectDto>> {
     this.logger.debug(`Search projects with query: ${JSON.stringify(dto)}`)
-    const { page = 1 , perPage = 10, query, status, type } = dto;
+    const { page = 1, perPage = 10, query, status, type } = dto;
 
     const [projectsEntities, count] = await this.projectRepo.findAndCount({
       where: {
-        memberProject: {member: {email: email}},
+        memberProject: { member: { email: email } },
         name: ILike(`%${query}%`),
         projectType: type,
       },
       skip: (page - 1) * perPage,
       take: perPage,
     })
-    
+
     const project = projectsEntities.map(project => new BaseProjectDto().fromProjectEntity(project));
 
     return {
@@ -201,7 +205,22 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     if (platforms.length === 0) {
       return [];
     }
-    return this.platformRepo.save(platforms.map(platform => {return { name: platform }}));
+    return this.platformRepo.save(platforms.map(platform => { return { name: platform } }));
+  }
+
+  async getOrCreateLabel(label: string): Promise<LabelEntity> {
+    this.logger.debug(`Get or create label: ${label}`)
+
+    // TODO check to use the exist fun to create and get label
+
+    let existingLabel = await this.labelRepo.findOneBy({ name: label });
+    if (existingLabel) {
+      return existingLabel;
+    }
+
+    // Create new label if it doesn't exist
+    const newLabel = this.labelRepo.create({ name: label });
+    return await this.labelRepo.save(newLabel);
   }
 
   async createProject(projectDto: CreateProjectDto): Promise<ProjectDto> {
@@ -210,17 +229,22 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
 
     let project = new ProjectEntity();
     project.name = projectDto.name;
+    project.projectName = projectDto.projectName;
     project.description = projectDto.description;
     project.projectType = projectDto.projectType ?? ProjectType.PRODUCT;
 
-    this.enforceProjectRestrictions({projectType: project.projectType, platforms: projectDto.platforms});
+    this.enforceProjectRestrictions({ projectType: project.projectType, platforms: projectDto.platforms });
 
-    let [member, platforms] = await Promise.all([
-      this.getOrCreateMember(projectDto.username, false), 
-      this.getOrCreatePlatforms(projectDto.platforms)
+    let [member, platforms, label] = await Promise.all([
+      this.getOrCreateMember(projectDto.username, false),
+      this.getOrCreatePlatforms(projectDto.platforms),
+      projectDto.label ? this.getOrCreateLabel(projectDto.label) : Promise.resolve(null)
     ]);
-    
+
     project.platforms = platforms ?? [];
+    if (label) {
+      project.label = label;
+    }
 
     try {
       project = await this.projectRepo.save(project);
@@ -245,39 +269,48 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     return new ProjectDto().fromProjectEntity(project)
   }
 
-  async editProject(dto: EditProjectDto): Promise<ProjectDto>{
+  async editProject(dto: EditProjectDto): Promise<ProjectDto> {
     this.logger.debug(`Edit project: ${dto.projectId}`)
- 
+
     const project = await this.projectRepo.findOneBy({ id: dto.projectId });
     if (!project) {
       throw new NotFoundException('Project not found');
     }
-    
+
     project.projectType = dto.projectType ?? project.projectType;
 
     this.enforceProjectRestrictions({
-      projectType: project.projectType, 
+      projectType: project.projectType,
       platforms: dto.platforms ?? project.platforms.map(platform => platform.name)
     });
 
     project.platforms = await this.getOrCreatePlatforms(dto.platforms) ?? project.platforms;
 
     project.name = dto.name ?? project.name;
+    project.projectName = dto.projectName ?? project.projectName;
     project.description = dto.description ?? project.description;
     project.projectType = dto.projectType ?? project.projectType;
 
+    if (dto.label !== undefined) {
+      if (dto.label === null || dto.label === '') {
+        project.label = null;
+      } else {
+        project.label = await this.getOrCreateLabel(dto.label);
+      }
+    }
+
     try {
-      await this.projectRepo.save(project);
-      return new ProjectDto().fromProjectEntity(await this.getProjectEntity(dto.projectId));
-    }catch(error){
-      if (error.code === '23505'){
+      const savedProject = await this.projectRepo.save(project);
+      return new ProjectDto().fromProjectEntity(savedProject);
+    } catch (error) {
+      if (error.code === '23505') {
         throw new ConflictException('Project name already exists');
       }
       throw error;
     }
   }
 
-  private enforceProjectRestrictions(project: {projectType: ProjectType, platforms?: string[]}){
+  private enforceProjectRestrictions(project: { projectType: ProjectType, platforms?: string[] }) {
     if (project.projectType === ProjectType.FORMATION && (project.platforms?.length ?? 0) > 1) {
       throw new BadRequestException('Formation projects can only have one platform');
     }
@@ -286,34 +319,34 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   async deleteProject(params: ProjectIdentifierParams): Promise<string> {
     this.logger.log(`Delete project with id: ${params.projectId}`)
     const project = await this.projectRepo.findOne({
-      select: {releases: {version: true}},
-      where: {id: params.projectId},
-      relations: {releases: true}
+      select: { releases: { version: true } },
+      where: { id: params.projectId },
+      relations: { releases: true }
     });
-    
+
     if (project?.releases?.length) {
       this.logger.debug(`Send deleted request to upload for ${project.releases.length} releases`)
       const releasesParams = project.releases.map(release => new ReleaseParams(params.projectId, release.version))
       try {
         await Promise.all(releasesParams.map(release => lastValueFrom(this.uploadClient.send(UploadTopics.DELETE_RELEASE, release))))
-      }catch (error) {
+      } catch (error) {
         throw new InternalServerErrorException(error.message);
       }
     }
 
     try {
-      const {raw, affected} = await this.projectRepo.delete({id: params.projectId});
-      if (affected === 0){
+      const { raw, affected } = await this.projectRepo.delete({ id: params.projectId });
+      if (affected === 0) {
         throw new NotFoundException(`Project with id ${params.projectId} not found, delete failed`);
       }
       return `Project '${project?.name}' deleted successfully`;
-    }catch (error) {
+    } catch (error) {
       if (error.code === '23503') { // foreign key violation, meaning a referenced row does not exist in the referenced table
         throw new ConflictException('Delete Project releases failed, Try again later')
       }
       throw error
     }
-    
+
   }
 
   async confirmMemberInProject(params: ProjectIdentifierParams, email: string) {
@@ -515,7 +548,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     return mbProjectsRes;
   }
 
-  private async getProjectEntity(projectId: number): Promise<ProjectEntity>{
+  private async getProjectEntity(projectId: number): Promise<ProjectEntity> {
     const project = await this.projectRepo.findOneBy({ id: projectId });
     if (!project) {
       throw new NotFoundException(`Project: ${projectId} not found`);
@@ -523,10 +556,10 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     return project
   }
 
-  async getProject(params: ProjectIdentifierParams, email: string): Promise<DetailedProjectDto> { 
+  async getProject(params: ProjectIdentifierParams, email: string): Promise<DetailedProjectDto> {
     const project = await this.projectRepo.findOne({
-      where: {id: params.projectId},
-      relations: {memberProject: {member: true}, tokens: true},
+      where: { id: params.projectId },
+      relations: { memberProject: { member: true }, tokens: true, label: true },
     });
 
     if (!project) {
@@ -599,9 +632,9 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   }
 
 
-  async getProjectTokens(projectId: number): Promise<ProjectTokenDto[]>{
+  async getProjectTokens(projectId: number): Promise<ProjectTokenDto[]> {
     this.logger.log(`Get all tokens for project with id ${projectId}`);
-    const tokens = await this.tokenRepo.find({where: { project: { id: projectId } }})
+    const tokens = await this.tokenRepo.find({ where: { project: { id: projectId } } })
     return tokens.map(t => ProjectTokenDto.fromProjectTokenEntity(t))
   }
 
@@ -665,50 +698,50 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
 
   async deleteProjectToken(params: TokenParams): Promise<string> {
     this.logger.log(`Delete token with id ${params.tokenId} for project with id ${params.projectId}`);
-    const {raw, affected} = await this.tokenRepo.delete({ id: params.tokenId, project: { id: params.projectId } })
+    const { raw, affected } = await this.tokenRepo.delete({ id: params.tokenId, project: { id: params.projectId } })
     if (affected === 0) {
       throw new NotFoundException(`Token with id ${params.tokenId} for project with id ${params.projectId} not found`)
     }
     return "Token deleted successfully"
   }
-  
+
 
   private generateToken(projectId: number, projectName: string, name: string, neverExpires: boolean, expirationDate?: Date): string {
     this.logger.log(`Generate token for project with id ${projectId}`);
-    const payload = {projectId, projectName, name, neverExpires}
+    const payload = { projectId, projectName, name, neverExpires }
     const expiresIn = neverExpires
       ? '100y'
       : expirationDate
         ? Math.floor((expirationDate.getTime() - Date.now()) / 1000)
         : '1y';
 
-    return this.jwtService.sign({ data: payload}, {expiresIn: expiresIn});
+    return this.jwtService.sign({ data: payload }, { expiresIn: expiresIn });
   }
 
-  async onProjectReleasesChanged(event: ProjectReleasesChangedEvent){
+  async onProjectReleasesChanged(event: ProjectReleasesChangedEvent) {
     this.logger.debug(`onProjectReleasesChanged: for project: ${event.projectId}`);
     try {
-          // TODO make this more efficient
+      // TODO make this more efficient
       const project = await this.getProjectEntity(event.projectId);
       project.projectSummary['latestRelease'] = event?.latestRelease;
       project.projectSummary['upcomingRelease'] = event?.upcomingRelease;
       await this.projectRepo.save(project).catch(err => this.logger.error(`Error saving release changed event: ${JSON.stringify(event)}, error: ${err}`));
-    }catch(err) {
+    } catch (err) {
       this.logger.error(`Error saving release changed event: ${JSON.stringify(event)}, error: ${err}`);
     }
-    
+
   }
 
   async getDocs(projectId: number): Promise<DocDto[]> {
     this.logger.log(`Get docs for project with id ${projectId}`);
-    const docs = await this.docRepo.find({where: {project: {id: projectId}}});
+    const docs = await this.docRepo.find({ where: { project: { id: projectId } } });
     return docs.map(doc => DocDto.fromDocEntity(doc));
   }
 
   async getDocById(params: DocsParams): Promise<DocDto> {
     this.logger.log(`Find doc with id ${params.id} for project with id ${params.projectId}`);
-    const doc = await this.docRepo.findOneBy({id: params.id, project: {id: params.projectId}});
-    if (!doc){
+    const doc = await this.docRepo.findOneBy({ id: params.id, project: { id: params.projectId } });
+    if (!doc) {
       throw new NotFoundException(`Document with id ${params.id} not found`)
     }
     return DocDto.fromDocEntity(doc);
@@ -719,12 +752,12 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     const entity = new DocEntity()
     entity.name = dto.name
     entity.isUrl = dto.isUrl
-    entity.project = {id: dto.projectId} as ProjectEntity
+    entity.project = { id: dto.projectId } as ProjectEntity
 
     if (dto.isUrl) {
       entity.docUrl = dto.docUrl
       entity.readme = null
-    }else {
+    } else {
       entity.docUrl = null
       entity.readme = dto.readme
     }
@@ -733,19 +766,19 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
 
   async updateDoc(dto: UpdateDocDto): Promise<DocDto> {
     this.logger.log(`Update doc: ${JSON.stringify(dto)} `);
-    const entity = await this.docRepo.findOneBy({id: dto.id, project: {id: dto.projectId}})
-    if (!entity){
+    const entity = await this.docRepo.findOneBy({ id: dto.id, project: { id: dto.projectId } })
+    if (!entity) {
       throw new NotFoundException(`Document with id ${dto.id} not found`);
     }
     entity.id = dto.id
     entity.name = dto.name ?? entity.name
     entity.isUrl = dto.isUrl ?? entity.isUrl
-    entity.project = {id: dto.projectId} as ProjectEntity
+    entity.project = { id: dto.projectId } as ProjectEntity
 
     if (entity.isUrl) {
       entity.docUrl = dto.docUrl
       entity.readme = null
-    }else {
+    } else {
       entity.docUrl = null
       entity.readme = dto.readme
     }
@@ -756,12 +789,93 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
 
   async deleteDoc(params: DocsParams): Promise<string> {
     this.logger.log(`Delete doc with id ${params.id} for project with id ${params.projectId}`);
-    const doc = await this.docRepo.findOneBy({id: params.id, project: {id: params.projectId}})
-    if (!doc){
+    const doc = await this.docRepo.findOneBy({ id: params.id, project: { id: params.projectId } })
+    if (!doc) {
       throw new NotFoundException(`Document with id ${params.id} not found`);
     }
     await this.docRepo.remove(doc);
     return `Document with id ${params.id} deleted successfully`;
+  }
+
+  // LABEL METHODS
+  async getLabels(query?: LabelNameDto): Promise<LabelDto[]> {
+    this.logger.debug(`Getting labels with query: ${JSON.stringify(query)}`);
+
+    const queryBuilder = this.labelRepo.createQueryBuilder('label');
+
+    if (query?.name) {
+      queryBuilder.where('label.name ILIKE :name', { name: `%${query.name}%` });
+    }
+
+    queryBuilder.orderBy('label.name', 'ASC');
+
+    const labels = await queryBuilder.getMany();
+
+    return labels.map(label => LabelDto.fromLabelEntity(label));
+  }
+
+  async createLabel(dto: LabelNameDto): Promise<LabelDto> {
+    this.logger.debug(`Creating label: ${dto.name}`);
+
+    // Check if label with this name already exists
+    const existingLabel = await this.labelRepo.findOneBy({ name: dto.name });
+    if (existingLabel) {
+      throw AppErrorException.conflict(
+        ErrorCode.PM_LABEL_ALREADY_EXISTS,
+        `Label with name '${dto.name}' already exists`
+      );
+    }
+
+    const label = this.labelRepo.create({ name: dto.name });
+    const savedLabel = await this.labelRepo.save(label);
+
+    return LabelDto.fromLabelEntity(savedLabel)
+  }
+
+  async updateLabel(id: number, dto: LabelNameDto): Promise<LabelDto> {
+    this.logger.debug(`Updating label ${id} with data: ${JSON.stringify(dto)}`);
+
+    const label = await this.labelRepo.findOneBy({ id });
+    if (!label) {
+      throw AppErrorException.notFound(
+        ErrorCode.PM_LABEL_NOT_FOUND,
+        `Label with id ${id} not found`
+      );
+    }
+
+    label.name = dto.name;
+    const savedLabel = await this.labelRepo.save(label);
+
+    return LabelDto.fromLabelEntity(savedLabel);
+  }
+
+  async deleteLabel(id: number): Promise<string> {
+    this.logger.debug(`Deleting label with ID: ${id}`);
+
+    const label = await this.labelRepo.findOneBy({ id });
+    if (!label) {
+      throw AppErrorException.notFound(
+        ErrorCode.PM_LABEL_NOT_FOUND,
+        `Label with id ${id} not found`
+      );
+    }
+
+    try {
+      await this.labelRepo.remove(label);
+      return `Label '${label.name}' deleted successfully`;
+    } catch (error) {
+      if (error.code === '23503') { // Foreign key constraint violation
+        throw AppErrorException.conflict(
+          ErrorCode.PM_LABEL_IN_USE,
+          `Cannot delete label '${label.name}' because it is still being used by one or more projects`
+        );
+      }
+      this.logger.error(`Error deleting label with ID ${id}: ${error.message}`);
+      throw AppErrorException.internalServerError(
+        ErrorCode.PM_OTHER,
+        `Failed to delete label '${label.name}' due to an unexpected error`
+      );
+    }
   }
 
   async onModuleInit() {

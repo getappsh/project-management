@@ -7,7 +7,9 @@ export const UploadTopics = {
     UPDATE_UPLOAD_STATUS: `getapp-upload.update-upload-status${region}`,
     LAST_VERSION: `getapp-upload.last-version${region}`,
     CHECK_HEALTH: `getapp-upload.check-health${region}`,
+
     CREATE_FILE_UPLOAD_URL: `getapp-upload.create-file-upload-url${region}`,
+    GET_FILE_UPLOAD_URL: `getapp-upload.get-file-upload-url${region}`,
 
     // Releases
     GET_RELEASES: `getapp-upload.get-releases${region}`,
@@ -30,6 +32,7 @@ export const UploadTopics = {
 
 export const UploadTopicsEmit = {
     PROJECT_REGULATION_CHANGED: `getapp-upload.project-regulation-changed${region}`,
+    UPDATE_FILE_UPLOAD: `getapp-upload.update-file-upload${region}`,
 }
 
 export const DeliveryTopics = {
@@ -54,6 +57,7 @@ export const OfferingTopics = {
     GET_OFFERING_FOR_PLATFORM: `getapp-offering.get-offering-for-platform${region}`,
     GET_OFFERING_FOR_DEVICE_TYPE: `getapp-offering.get-offering-for-device-type${region}`,
     GET_OFFERING_FOR_PROJECT: `getapp-offering.get-offering-for-project${region}`,
+    GET_OFFER_OF_COMP: `getapp-offering.get-offering-of-comp${region}`,
 } as const
 
 export const OfferingTopicsEmit = {
@@ -81,7 +85,7 @@ export const ProjectManagementTopics = {
     GET_PROJECTS: `getapp-project-management.get-projects${region}`,
     SEARCH_PROJECTS: `getapp-project-management.search-projects${region}`,
     GET_PROJECT_BY_IDENTIFIER: `getapp-project-management.get-project-by-identifier${region}`,
-    
+
     ADD_PROJECT_NEW_MEMBER: `getapp-project-management.add-project-new-member${region}`,
     CONFIRM_PROJECT_MEMBER: `getapp-project-management.confirm-project-member${region}`,
     EDIT_PROJECT_MEMBER: `getapp-project-management.edit-project-member${region}`,
@@ -116,6 +120,12 @@ export const ProjectManagementTopics = {
     CREATE_PROJECT_DOC: `getapp-project-management.create-project-doc${region}`,
     UPDATE_PROJECT_DOC: `getapp-project-management.update-project-doc${region}`,
     DELETE_PROJECT_DOC: `getapp-project-management.delete-project-doc${region}`,
+
+    // Labels
+    GET_LABELS: `getapp-project-management.get-labels${region}`,
+    CREATE_LABEL: `getapp-project-management.create-label${region}`,
+    UPDATE_LABEL: `getapp-project-management.update-label${region}`,
+    DELETE_LABEL: `getapp-project-management.delete-label${region}`,
 
     CHECK_HEALTH: `getapp-project-management.check-health${region}`
 } as const
@@ -153,6 +163,7 @@ export const GetMapTopicsEmit = {
 export const DeviceTopics = {
     DEVICE_PERSONAL: `getapp-device.personal${region}`,
     All_DEVICES: `getapp-device.all${region}`,
+    GET_DEVICE: `getapp-device.get.device${region}`,
     DEVICE_SOFTWARES: `getapp-device.device.softwares${region}`,
     DEVICES_SOFTWARE_STATISTIC_INFO: `getapp-device.device.software.statistic.info${region}`,
     DEVICES_MAP_STATISTIC_INFO: `getapp-device.device.map.statistic.info${region}`,
@@ -189,6 +200,13 @@ export const DevicesGroupTopics = {
     GET_GROUPS: `getapp-device.group.get-all${region}`,
     GET_GROUP_DEVICES: `getapp-device.group.get-devices${region}`,
     SET_GROUP_DEVICES: `getapp-device.group.set-devices${region}`,
+    DELETE_GROUP: `getapp-device.group.delete${region}`,
+    CREATE_ORG_IDS: `getapp-device.group.org-ids.create${region}`,
+    GET_ORG_IDS: `getapp-device.group.org-ids.get-all${region}`,
+    GET_ORG_ID: `getapp-device.group.org-ids.get${region}`,
+    EDIT_ORG_IDS: `getapp-device.group.org-ids.edit${region}`,
+    DELETE_ORG_IDS: `getapp-device.group.org-ids.delete${region}`,
+    GET_ORG_DEVICES: `getapp-device.group.org-devices.get-all${region}`
 } as const
 
 export const DevicesHierarchyTopics = {
