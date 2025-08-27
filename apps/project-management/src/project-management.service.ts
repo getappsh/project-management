@@ -115,7 +115,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       where: {
         id: In(projectsId.map(project => project.id))
       },
-      relations: { memberProject: { member: true }, releases: true },
+      relations: { memberProject: { member: true }, releases: true, label: true },
       skip: (page - 1) * perPage,
       take: perPage,
     })
