@@ -147,6 +147,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
         name: ILike(`%${query}%`),
         projectType: type,
       },
+      relations: { label: true },
       skip: (page - 1) * perPage,
       take: perPage,
     })

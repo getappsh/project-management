@@ -58,6 +58,7 @@ export class ProjectManagementController {
   searchProjects(@RpcPayload() query: SearchProjectsQueryDto, @AuthUser('email') email: string) {
     return this.projectManagementService.searchProjects(query, email);
   }
+  
   @MessagePattern(ProjectManagementTopics.CREATE_PROJECT)
   createProject(@RpcPayload() project: CreateProjectDto) {
     return this.projectManagementService.createProject(project);
