@@ -74,7 +74,7 @@ export class SearchProjectsQueryDto {
   })
   @IsOptional()
   @IsBoolean()
-  @Type(() => Boolean)
+  @Transform(({ value }) => value === 'true' || value === true)
   includeUnassociated?: boolean = false;
 
   @ApiPropertyOptional({
