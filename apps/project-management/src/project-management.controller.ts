@@ -1,5 +1,5 @@
 import { ProjectManagementTopics, ProjectManagementTopicsEmit } from '@app/common/microservice-client/topics';
-import { Controller, Logger, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Logger, Param, Post, UseInterceptors } from '@nestjs/common';
 import { EventPattern, MessagePattern } from '@nestjs/microservices';
 import { ProjectManagementService } from './project-management.service';
 import { DeviceResDto } from '@app/common/dto/project-management/dto/device-res.dto';
@@ -20,10 +20,11 @@ import {
   EditProjectDto,
   ProjectMemberPreferencesDto,
   UpdateOneOfManyRegulationDto,
-  CreateDocDto, 
-  DocsParams, 
+  CreateDocDto,
+  DocsParams,
   UpdateDocDto,
   LabelNameDto,
+  ProjectAddScriptMetadataDto
 } from '@app/common/dto/project-management';
 import { RpcPayload, UserContextInterceptor } from '@app/common/microservice-client';
 import * as fs from 'fs';
@@ -58,7 +59,7 @@ export class ProjectManagementController {
   searchProjects(@RpcPayload() query: SearchProjectsQueryDto, @AuthUser('email') email: string) {
     return this.projectManagementService.searchProjects(query, email);
   }
-  
+
   @MessagePattern(ProjectManagementTopics.CREATE_PROJECT)
   createProject(@RpcPayload() project: CreateProjectDto) {
     return this.projectManagementService.createProject(project);
@@ -196,7 +197,7 @@ export class ProjectManagementController {
 
   @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
   @MessagePattern(ProjectManagementTopics.UPDATE_PROJECT_REGULATIONS)
-  updateRegulations(@RpcPayload() dto: {projectId: number, regulations: UpdateOneOfManyRegulationDto[]}) {
+  updateRegulations(@RpcPayload() dto: { projectId: number, regulations: UpdateOneOfManyRegulationDto[] }) {
     return this.regulationService.updateRegulations(dto.projectId, dto.regulations)
   }
 
@@ -287,6 +288,18 @@ export class ProjectManagementController {
   @MessagePattern(ProjectManagementTopics.DELETE_PROJECT_DOC)
   deleteDoc(@RpcPayload() params: DocsParams) {
     return this.projectManagementService.deleteDoc(params)
+  }
+
+  @Post(':projectId/addScriptFileMetatadaToVersion')
+  @ValidateProjectUserAccess()
+  addScriptFileMetatadaToVersion(
+    @Param('projectId') projectId: string,
+    @Body() dto: ProjectAddScriptMetadataDto
+  ) {
+    return this.projectManagementService.addScriptFileMetadataToVersion({
+      ...dto,
+      projectId: Number(projectId),
+    });
   }
 
   private readImageVersion() {

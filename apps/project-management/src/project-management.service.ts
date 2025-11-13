@@ -24,7 +24,8 @@ import {
   DocsParams,
   UpdateDocDto,
   LabelDto,
-  LabelNameDto
+  LabelNameDto,
+  ProjectAddScriptMetadataDto
 } from '@app/common/dto/project-management';
 import { ErrorCode, AppErrorException } from '@app/common/dto/error';
 import { OidcService, UserSearchDto } from '@app/common/oidc/oidc.interface';
@@ -885,6 +886,27 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   async onModuleInit() {
     this.uploadClient.subscribeToResponseOf([UploadTopics.DELETE_RELEASE])
     await this.uploadClient.connect()
+  }
+
+  //this method enblaes to add to a version a metadata about a script file (from files that were uploaded that wil be executed by agent)
+  async addScriptFileMetadataToVersion(dto: ProjectAddScriptMetadataDto): Promise<void> {
+    const { projectId, version, scriptFileName } = dto;
+
+    this.logger.debug(`Adding script file metadata to version ${version} in project ${projectId}`);
+    const uploadVersion = await this.uploadVersionRepo.findOneBy({ project: { id: projectId }, version: version });
+    if (!uploadVersion) {
+      throw new NotFoundException(`Upload version ${version} not found in project ${projectId}`);
+    }
+    
+    // Initialize metadata object if it doesn't exist
+    if (!uploadVersion.metadata) {
+      uploadVersion.metadata = {};
+    }
+    // Add or update script file metadata
+    uploadVersion.metadata['scriptFile'] = scriptFileName;
+    
+    await this.uploadVersionRepo.save(uploadVersion);
+    this.logger.debug(`Script file metadata added to version ${version} in project ${projectId}`);
   }
 
 }

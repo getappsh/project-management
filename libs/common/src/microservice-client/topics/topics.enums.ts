@@ -133,7 +133,10 @@ export const ProjectManagementTopics = {
     UPDATE_LABEL: `getapp-project-management.update-label${region}`,
     DELETE_LABEL: `getapp-project-management.delete-label${region}`,
 
+    ADD_SCRIPT_METADATA_TO_VERSION: `getapp-project-management.add-script-metadata-to-version${region}`,
+    
     CHECK_HEALTH: `getapp-project-management.check-health${region}`
+
 } as const
 
 export const ProjectManagementTopicsEmit = {
