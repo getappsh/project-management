@@ -20,6 +20,7 @@ export enum ErrorCode {
 
   // project management
   PM_OTHER = 'PROJECT_MANAGEMENT.unknown',
+  PM_DELETE_PROJECT_FAILED = 'PROJECT_MANAGEMENT.deleteProjectFailed',
   PM_LABEL_NOT_FOUND = 'PROJECT_MANAGEMENT.labelNotFound',
   PM_LABEL_ALREADY_EXISTS = 'PROJECT_MANAGEMENT.labelAlreadyExists',
   PM_LABEL_IN_USE = 'PROJECT_MANAGEMENT.labelInUse',
@@ -49,6 +50,9 @@ export enum ErrorCode {
   GROUP_ORG_ID_NOT_ALLOWED = "GROUP.orgIdNotAllowed",
   GROUP_ORG_ID_CONFLICT = "GROUP.orgIdConflict",
   GROUP_ORG_ID_NOT_FOUND = "GROUP.orgIdNotFound",
+
+  // releases
+  RELEASE_HAS_DEPENDENTS = "RELEASE.hasDependents",
 }
 
 export class ErrorDto {
@@ -68,6 +72,7 @@ export class ErrorDto {
       "`DELIVERY.unableClearCache`:  Some issue occurs when trying to clear cache <br /> " +
 
       "`PROJECT_MANAGEMENT.unknown`: Error code not listed in the enum <br /> " +
+      "`PROJECT_MANAGEMENT.deleteProjectFailed`: Failed to delete the project <br /> " +
       "`PROJECT_MANAGEMENT.labelNotFound`: Label with the given id or name was not found <br /> " +
       "`PROJECT_MANAGEMENT.labelAlreadyExists`: Label with the given name already exists <br /> " +
       "`PROJECT_MANAGEMENT.labelInUse`: Label cannot be deleted as it is being used by projects <br /> " +
@@ -124,12 +129,14 @@ export class ErrorDto {
 export class AppError extends Error {
   errorCode: ErrorCode;
   statusCode?: number;
+  data?: any;
 
-  constructor(errorCode: ErrorCode, message?: string, statusCode?: number) {
+  constructor(errorCode: ErrorCode, message?: string, statusCode?: number, data?: any) {
     super(message);
     this.name = "AppError";
     this.errorCode = errorCode;
     this.statusCode = statusCode;
+    this.data = data;
     Object.setPrototypeOf(this, AppError.prototype);
   }
 }

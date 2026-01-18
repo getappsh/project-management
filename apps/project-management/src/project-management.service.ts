@@ -26,7 +26,7 @@ import {
   LabelDto,
   LabelNameDto
 } from '@app/common/dto/project-management';
-import { ErrorCode, AppErrorException } from '@app/common/dto/error';
+import { ErrorCode, AppError, AppErrorException, catchRpcError } from '@app/common/dto/error';
 import { OidcService, UserSearchDto } from '@app/common/oidc/oidc.interface';
 import { PaginatedResultDto } from '@app/common/dto/pagination.dto';
 import { ProjectAccessService } from '@app/common/utils/project-access';
@@ -40,6 +40,7 @@ import { lastValueFrom } from 'rxjs';
 export class ProjectManagementService implements ProjectAccessService, OnModuleInit {
 
   private readonly logger = new Logger(ProjectManagementService.name);
+
   constructor(
     private readonly jwtService: JwtService,
     @InjectRepository(UploadVersionEntity) private readonly uploadVersionRepo: Repository<UploadVersionEntity>,
@@ -332,9 +333,18 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       this.logger.debug(`Send deleted request to upload for ${project.releases.length} releases`)
       const releasesParams = project.releases.map(release => new ReleaseParams(params.projectId, release.version))
       try {
-        await Promise.all(releasesParams.map(release => lastValueFrom(this.uploadClient.send(UploadTopics.DELETE_RELEASE, release))))
+        await Promise.all(releasesParams.map(release => 
+          lastValueFrom(this.uploadClient.send(UploadTopics.DELETE_RELEASE, release).pipe(catchRpcError()))
+        ))
       } catch (error) {
-        throw new InternalServerErrorException(error.message);
+        if (error instanceof AppError){
+          if (error.errorCode == ErrorCode.RELEASE_HAS_DEPENDENTS){
+            error.errorCode = ErrorCode.PM_DELETE_PROJECT_FAILED
+            error.message = `Delete Project releases failed because some releases have dependents.`
+          }
+        }
+        this.logger.error(`Failed to delete releases for project ${params.projectId}: ${error?.message || error?.toString()}`);
+        throw error;
       }
     }
 
