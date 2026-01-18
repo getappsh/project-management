@@ -33,4 +33,13 @@ export class FileUploadEntity extends BaseEntity{
   @Column({ name: 'signature', type: 'text', nullable: true})
   signature?: string
 
+  @Column({ name: 'sha256', type: 'text', nullable: true})
+  sha256?: string
+
+  @Column({ name: 'progress', type: 'integer', default: 0 })
+  progress?: number
+
+  @Column({ name: 'error', type: 'text', nullable: true})
+  error?: string
+
 }

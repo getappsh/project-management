@@ -30,6 +30,10 @@ export const UploadTopics = {
     //update file metadata
     UPDATE_FILE_METADATA: `getapp-upload.update-file-metadata${region}`,
 
+    // Export/Import
+    EXPORT_RELEASE: `getapp-upload.export-release${region}`,
+    IMPORT_RELEASE: `getapp-upload.import-release${region}`,
+
 } as const
 
 export const UploadTopicsEmit = {

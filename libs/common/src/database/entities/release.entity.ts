@@ -44,6 +44,12 @@ export class ReleaseEntity {
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 
+  @Column({ name: 'created_by', type: 'varchar', nullable: true })
+  createdBy: string | null;
+
+  @Column({ name: 'updated_by', type: 'varchar', nullable: true })
+  updatedBy: string | null;
+
   @Column({ name: 'released_at', type: 'timestamptz', nullable: true })
   releasedAt: Date | null;
 
