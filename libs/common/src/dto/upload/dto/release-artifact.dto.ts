@@ -1,7 +1,7 @@
 import { ArtifactTypeEnum, FileUPloadStatusEnum, ReleaseArtifactEntity } from "@app/common/database/entities";
 import { ApiProperty } from "@nestjs/swagger";
 import { Type } from "class-transformer";
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsBoolean, IsNumber, IsSemVer } from "class-validator";
+import { IsString, IsNotEmpty, IsOptional, IsEnum, IsBoolean, IsNumber, IsSemVer, NotContains } from "class-validator";
 import { ProjectIdentifierParams } from "../../project-management";
 
 export class SetReleaseArtifactDto {
@@ -16,6 +16,7 @@ export class SetReleaseArtifactDto {
   @ApiProperty()
   @IsString()
   @IsNotEmpty()
+  @NotContains(' ', { message: 'Artifact name cannot contain spaces' })
   artifactName: string
 
   @ApiProperty({ required: false, type: 'enum', enum: ArtifactTypeEnum, default: ArtifactTypeEnum.FILE })

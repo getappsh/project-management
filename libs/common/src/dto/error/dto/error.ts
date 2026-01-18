@@ -99,7 +99,9 @@ export class ErrorDto {
       "`GROUP.orgIdUnknown`: Organization ID is unknown, see message for cause.<br/>" +
       "`GROUP.orgIdNotAllowed`: Organization ID is not allowed to be used, see message for cause.<br/>" +
       "`GROUP.orgIdConflict`: Organization ID conflict occurred.<br/>" +
-      "`GROUP.orgIdNotFound`: Organization ID not found.",
+      "`GROUP.orgIdNotFound`: Organization ID not found.<br/>" +
+
+      "`RELEASE.hasDependents`: Cannot delete release because other releases depend on it.",
     required: false
   })
   @IsEnum(ErrorCode)

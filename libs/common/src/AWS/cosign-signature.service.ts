@@ -16,8 +16,8 @@ export class CosignSignatureService {
   constructor(
     private readonly configService: ConfigService,
   ) {
-    try{
-      this.password = this.configService.getOrThrow<string>('COSIGN_PASSWORD'); 
+    try {
+      this.password = this.configService.getOrThrow<string>('COSIGN_PASSWORD');
       this.privateKeyPath = this.configService.getOrThrow<string>('COSIGN_PRIVATE_KEY_PATH');
       this.publicKeyPath = this.configService.getOrThrow<string>('COSIGN_PUBLIC_KEY_PATH');
     } catch (error) {
@@ -28,13 +28,18 @@ export class CosignSignatureService {
   async signFile(fileStream: stream.Readable): Promise<Buffer> {
     this.logger.debug(`Signing file`);
 
-    const env = { ...process.env};
+    const env = { ...process.env };
     env.COSIGN_PASSWORD = this.password;
 
     return new Promise<Buffer>((resolve, reject) => {
-      const cosign = spawn('cosign', ['sign-blob', '-', '--key', this.privateKeyPath,  "--tlog-upload=false"], { env });
-    
+      const cosign = spawn('cosign', ['sign-blob', '-', '--key', this.privateKeyPath, "--tlog-upload=false"], { env });
+
       let signature = Buffer.alloc(0);
+
+      cosign.on('error', (err) => {
+        this.logger.error(`Failed to spawn cosign process: ${err.message}`);
+        reject(new Error(`Cosign spawn failed: ${err.message}`));
+      });
 
       cosign.stdout.on('data', (chunk) => {
         this.logger.log(`Received chunk of size: ${chunk.length}`);
@@ -57,12 +62,12 @@ export class CosignSignatureService {
 
   async verifySignature(fileStream: stream.Readable, signature: string): Promise<boolean> {
     this.logger.debug(`Verifying signature for file`);
-    
-    const env = { ...process.env};
+
+    const env = { ...process.env };
     env.COSIGN_PASSWORD = this.password;
-    
+
     return new Promise<boolean>((resolve, reject) => {
-      
+
       const dir = mkdtempSync(join(tmpdir(), 'cosign-'));
       const tmpFilePath = join(dir, 'sigfile.sig');
       writeFileSync(tmpFilePath, signature);
@@ -72,6 +77,12 @@ export class CosignSignatureService {
 
       let verificationOutput = '';
       let verificationError = '';
+
+      cosign.on('error', (err) => {
+        this.logger.error(`Failed to spawn cosign process: ${err.message}`);
+        unlinkSync(tmpFilePath);
+        reject(new Error(`Cosign spawn failed: ${err.message}`));
+      });
 
       cosign.stdout.on('data', (chunk) => {
         verificationOutput += chunk.toString();
