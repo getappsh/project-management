@@ -97,7 +97,7 @@ export class ReleaseDto {
     dto.id = release.catalogId;
     dto.projectId = release?.project?.id;
     dto.projectName = release?.project?.name;
-    dto.name = release.name ?? "";
+    dto.name = release.name;
     dto.releaseNotes = release.releaseNotes ?? "";
     dto.metadata = release.metadata;
     dto.status = release.status;
