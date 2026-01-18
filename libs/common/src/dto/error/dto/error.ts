@@ -38,6 +38,7 @@ export enum ErrorCode {
 
   // devices
   DEVICE_NOT_FOUND = "DEVICE.notFound",
+  DEVICE_HAS_CHILDREN = "DEVICE.hasChildren",
   DEVICE_DT_NOT_FOUND = "DEVICE_TYPE.notFound",
   DEVICE_DT_ALREADY_EXISTS = "DEVICE_TYPE.alreadyExists",
   DEVICE_PLATFORM_NOT_FOUND = "DEVICE_PLATFORM.notFound",
@@ -89,6 +90,7 @@ export class ErrorDto {
 
 
       "`DEVICE.notFound`: Device with given id not found.<br/>" +
+      "`DEVICE.hasChildren`: Cannot delete device because it has child devices.<br/>" +
       "`DEVICE_DT_NOT_FOUND`: Device type with given id not found.<br/>" +
       "`DEVICE_DT_ALREADY_EXISTS`: Device type with given name already exists.<br/>" +
       "`DEVICE_PLATFORM.notFound`: Platform with given id or name not found.<br/>" +

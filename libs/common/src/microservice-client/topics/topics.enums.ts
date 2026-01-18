@@ -191,7 +191,9 @@ export const DeviceTopics = {
     // Config
     GET_DEVICE_CONFIG: `getapp-device.config.get${region}`,
     SET_DEVICE_CONFIG: `getapp-device.config.set${region}`,
-    CHECK_HEALTH: `getapp-device.check-health${region}`
+    CHECK_HEALTH: `getapp-device.check-health${region}`,
+    // Pending Versions
+    LIST_PENDING_VERSIONS: `getapp-device.pending-versions.list${region}`,
 } as const
 
 export const DeviceTopicsEmit = {
@@ -205,6 +207,9 @@ export const DeviceTopicsEmit = {
     UPDATE_TLS_STATUS: `getapp-device.update.tls.status${region}`,
     IM_PUSH_DISCOVERY: `getapp-device.im.push.discovery${region}`,
     RELEASE_CHANGED_EVENT: `getapp-device.release-changed-event${region}`,
+    // Pending Versions
+    ACCEPT_PENDING_VERSION: `getapp-device.pending-versions.accept${region}`,
+    REJECT_PENDING_VERSION: `getapp-device.pending-versions.reject${region}`,
 } as const
 
 
