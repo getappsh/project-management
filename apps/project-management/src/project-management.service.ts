@@ -326,7 +326,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     const project = await this.projectRepo.findOne({
       select: { releases: { version: true } },
       where: { id: params.projectId },
-      relations: { releases: true }
+      relations: { releases: true, deviceTypes: true }
     });
 
     if (project?.releases?.length) {
@@ -346,6 +346,12 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
         this.logger.error(`Failed to delete releases for project ${params.projectId}: ${error?.message || error?.toString()}`);
         throw error;
       }
+    }
+
+    // Clear deviceTypes relationship before deleting project
+    if (project?.deviceTypes?.length) {
+      project.deviceTypes = [];
+      await this.projectRepo.save(project);
     }
 
     try {
