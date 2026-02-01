@@ -84,6 +84,10 @@ export const DeployTopicsEmit = {
 export const ProjectManagementTopics = {
     GET_USERS: `getapp-project-management.get-users${region}`,
     GET_USER_PROJECTS: `getapp-project-management.get-user-projects${region}`,
+    GET_USER_PROJECT_IDS: `getapp-project-management.get-user-project-ids${region}`,
+    GET_PROJECT_IDS_BY_NAMES: `getapp-project-management.get-project-ids-by-names${region}`,
+    GET_MEMBER_IN_PROJECT: `getapp-project-management.get-member-in-project${region}`,
+    GET_PROJECT_FROM_TOKEN: `getapp-project-management.get-project-from-token${region}`,
 
     CREATE_PROJECT: `getapp-project-management.create-project${region}`,
     EDIT_PROJECT: `getapp-project-management.edit-project${region}`,

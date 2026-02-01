@@ -3,6 +3,7 @@ import { Controller, Logger, UseInterceptors } from '@nestjs/common';
 import { EventPattern, MessagePattern } from '@nestjs/microservices';
 import { ProjectManagementService } from './project-management.service';
 import { DeviceResDto } from '@app/common/dto/project-management/dto/device-res.dto';
+import { ProjectEntity } from '@app/common/database/entities';
 import {
   EditProjectMemberDto, CreateProjectDto, AddMemberToProjectDto,
   MemberResDto, MemberProjectsResDto,
@@ -114,6 +115,26 @@ export class ProjectManagementController {
   @MessagePattern(ProjectManagementTopics.GET_USER_PROJECTS)
   getUserProjects(@RpcPayload("stringValue") email: string): Promise<MemberProjectsResDto> {
     return this.projectManagementService.getUserProjects(email);
+  }
+
+  @MessagePattern(ProjectManagementTopics.GET_USER_PROJECT_IDS)
+  getUserProjectIds(@RpcPayload("stringValue") email: string): Promise<number[]> {
+    return this.projectManagementService.getUserProjectIds(email);
+  }
+
+  @MessagePattern(ProjectManagementTopics.GET_PROJECT_IDS_BY_NAMES)
+  getProjectIdsByNames(@RpcPayload() projectNames: string[]): Promise<number[]> {
+    return this.projectManagementService.getProjectIdsByNames(projectNames);
+  }
+
+  @MessagePattern(ProjectManagementTopics.GET_MEMBER_IN_PROJECT)
+  getMemberInProject(@RpcPayload() params: { projectIdentifier: number | string, email: string }) {
+    return this.projectManagementService.getMemberInProject(params.projectIdentifier, params.email);
+  }
+
+  @MessagePattern(ProjectManagementTopics.GET_PROJECT_FROM_TOKEN)
+  getProjectFromToken(@RpcPayload("stringValue") token: string): Promise<ProjectEntity> {
+    return this.projectManagementService.getProjectFromToken(token);
   }
 
   @ValidateProjectUserAccess()
