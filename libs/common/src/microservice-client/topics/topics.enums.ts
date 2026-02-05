@@ -27,6 +27,12 @@ export const UploadTopics = {
     SET_VERSION_REGULATION_STATUS: `getapp-upload.set-version-regulation-status${region}`,
     SET_VERSION_REGULATION_COMPLIANCE: `getapp-upload.set-version-regulation-compliance${region}`,
     DELETE_VERSION_REGULATION_STATUS: `getapp-upload.delete-version-regulation-status${region}`,
+    //update file metadata
+    UPDATE_FILE_METADATA: `getapp-upload.update-file-metadata${region}`,
+
+    // Export/Import
+    EXPORT_RELEASE: `getapp-upload.export-release${region}`,
+    IMPORT_RELEASE: `getapp-upload.import-release${region}`,
 
 } as const
 
@@ -155,6 +161,7 @@ export const GetMapTopics = {
     EXPORT_NOTIFICATION: `getapp-map.export.notify${region}`,
     // Inventory
     GET_INVENTORY_UPDATES: `getapp-map.inventory.updates${region}`,
+    GET_INVENTORY_UPDATES_V2: `getapp-map.inventory.updates.v2${region}`,
     // admin
     MAP_PUT: `getapp-map.put${region}`,
     // Device
@@ -178,6 +185,7 @@ export const DeviceTopics = {
     DEVICES_SOFTWARE_STATISTIC_INFO: `getapp-device.device.software.statistic.info${region}`,
     DEVICES_MAP_STATISTIC_INFO: `getapp-device.device.map.statistic.info${region}`,
     DEVICES_PUT: `getapp-device.put${region}`,
+    DELETE_DEVICE: `getapp-device.delete${region}`,
     DEVICE_MAPS: `getapp-device.device.maps${region}`,
     All_MAPS: `getapp-map.maps${region}`,
     GET_MAP: `getapp-map.map.id${region}`,
@@ -187,7 +195,9 @@ export const DeviceTopics = {
     // Config
     GET_DEVICE_CONFIG: `getapp-device.config.get${region}`,
     SET_DEVICE_CONFIG: `getapp-device.config.set${region}`,
-    CHECK_HEALTH: `getapp-device.check-health${region}`
+    CHECK_HEALTH: `getapp-device.check-health${region}`,
+    // Pending Versions
+    LIST_PENDING_VERSIONS: `getapp-device.pending-versions.list${region}`,
 } as const
 
 export const DeviceTopicsEmit = {
@@ -201,6 +211,9 @@ export const DeviceTopicsEmit = {
     UPDATE_TLS_STATUS: `getapp-device.update.tls.status${region}`,
     IM_PUSH_DISCOVERY: `getapp-device.im.push.discovery${region}`,
     RELEASE_CHANGED_EVENT: `getapp-device.release-changed-event${region}`,
+    // Pending Versions
+    ACCEPT_PENDING_VERSION: `getapp-device.pending-versions.accept${region}`,
+    REJECT_PENDING_VERSION: `getapp-device.pending-versions.reject${region}`,
 } as const
 
 

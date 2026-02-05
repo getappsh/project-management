@@ -103,7 +103,7 @@ export class ReleaseDto {
     dto.id = release.catalogId;
     dto.projectId = release?.project?.id;
     dto.projectName = release?.project?.name;
-    dto.name = release.name ?? "";
+    dto.name = release.name || "";
     dto.releaseNotes = release.releaseNotes ?? "";
     dto.metadata = release.metadata;
     dto.status = release.status;
@@ -201,6 +201,21 @@ export class ComponentV2Dto {
       ?.filter(a => a.isInstallationFile)
       ?.map(a => a?.fileUpload?.size ?? 0)
       ?.reduce((size, a) => size + a, 0);
+    return dto;
+  }
+
+  static fromPendingVersion(pendingVersion: any): ComponentV2Dto {
+    const dto = new ComponentV2Dto();
+    dto.id = pendingVersion.catalogId || `${pendingVersion.projectName}@${pendingVersion.version}`;
+    dto.version = pendingVersion.version;
+    dto.projectName = pendingVersion.projectName;
+    dto.status = ReleaseStatusEnum.DRAFT;
+    dto.type = ProjectType.PRODUCT;
+    dto.createdAt = pendingVersion.firstReportedDate;
+    dto.updatedAt = pendingVersion.lastReportedDate;
+    dto.releaseNotes = `Version reported by device but not registered in getapp`;
+    dto.metadata = pendingVersion.metadata || {};
+    dto.latest = false;
     return dto;
   }
 
