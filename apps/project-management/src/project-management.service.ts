@@ -568,6 +568,35 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     return mbProjectsRes;
   }
 
+  async getUserProjectIds(email: string): Promise<number[]> {
+    this.logger.verbose(`Getting all project IDs for user: ${email}`);
+    
+    const memberProjects = await this.memberProjectRepo.find({
+      select: { project: { id: true } },
+      relations: ['project'],
+      where: {
+        member: { email: email }
+      }
+    });
+
+    return memberProjects.map(mp => mp.project.id);
+  }
+
+  async getProjectIdsByNames(projectNames: string[]): Promise<number[]> {
+    this.logger.verbose(`Getting project IDs for names: ${projectNames.join(', ')}`);
+    
+    if (projectNames.length === 0) {
+      return [];
+    }
+
+    const projects = await this.projectRepo.find({
+      select: { id: true },
+      where: projectNames.map(name => ({ name }))
+    });
+
+    return projects.map(p => p.id);
+  }
+
   private async getProjectEntity(projectId: number): Promise<ProjectEntity> {
     const project = await this.projectRepo.findOneBy({ id: projectId });
     if (!project) {
