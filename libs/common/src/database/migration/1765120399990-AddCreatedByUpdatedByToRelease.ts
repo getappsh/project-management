@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class AddCreatedByUpdatedByToRelease1735689600000 implements MigrationInterface {
-    name = 'AddCreatedByUpdatedByToRelease1735689600000'
+export class AddCreatedByUpdatedByToRelease1765120399990 implements MigrationInterface {
+    name = 'AddCreatedByUpdatedByToRelease1765120399990'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
         await queryRunner.query(`ALTER TABLE "release" ADD "created_by" character varying`);

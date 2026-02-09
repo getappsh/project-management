@@ -8,10 +8,10 @@ export class ImportArtifactDto {
   @IsNotEmpty()
   name: string;
 
-  @ApiProperty({ description: 'Platform for the artifact (e.g., linux, macos, windows)' })
+  @ApiProperty({ description: 'Platform for the artifact (e.g., linux, macos, windows)', required: false })
   @IsString()
-  @IsNotEmpty()
-  platform: string;
+  @IsOptional()
+  platform?: string;
 
   @ApiProperty({ description: 'File size in bytes', type: 'integer', format: 'int64' })
   size: number;
@@ -70,10 +70,10 @@ export class ImportDependencyDto {
 }
 
 export class ImportReleaseDto {
-  @ApiProperty({ description: 'Release name' })
+  @ApiProperty({ description: 'Release name', required: false })
   @IsString()
-  @IsNotEmpty()
-  name: string;
+  @IsOptional()
+  name?: string;
 
   @ApiProperty({ description: 'Release version' })
   @IsString()

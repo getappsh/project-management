@@ -8,7 +8,6 @@ export class ExportArtifactDto {
   @IsNotEmpty()
   name: string;
 
-
   @ApiProperty({ description: 'File size in bytes', type: 'integer', format: 'int64' })
   size: number;
 

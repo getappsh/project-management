@@ -109,6 +109,20 @@ export class RejectPendingVersionDto {
   reason?: string;
 }
 
+export class CreateProjectVersionDto {
+  @ApiProperty()
+  projectName: string;
+
+  @ApiProperty()
+  version: string;
+
+  @ApiProperty()
+  isDraft: boolean;
+
+  @ApiProperty({ required: false })
+  reason?: string;
+}
+
 /**
  * Convert PendingVersionEntity to PendingVersionDto
  */

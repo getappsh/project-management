@@ -52,6 +52,12 @@ export enum ErrorCode {
   GROUP_ORG_ID_CONFLICT = "GROUP.orgIdConflict",
   GROUP_ORG_ID_NOT_FOUND = "GROUP.orgIdNotFound",
 
+  // rules
+  RULE_VALIDATION_FAILED = "RULE.validationFailed",
+  RULE_FIELD_NOT_SUPPORTED = "RULE.fieldNotSupported",
+  RULE_FIELD_ALREADY_EXISTS = "RULE.fieldAlreadyExists",
+  RULE_FIELD_NOT_FOUND = "RULE.fieldNotFound",
+
   // releases
   RELEASE_HAS_DEPENDENTS = "RELEASE.hasDependents",
 }
@@ -102,6 +108,11 @@ export class ErrorDto {
       "`GROUP.orgIdNotAllowed`: Organization ID is not allowed to be used, see message for cause.<br/>" +
       "`GROUP.orgIdConflict`: Organization ID conflict occurred.<br/>" +
       "`GROUP.orgIdNotFound`: Organization ID not found.<br/>" +
+
+      "`RULE.validationFailed`: Rule validation against rule engine failed.<br/>" +
+      "`RULE.fieldNotSupported`: One or more fields in the rule are not supported.<br/>" +
+      "`RULE.fieldAlreadyExists`: Rule field with the given name already exists.<br/>" +
+      "`RULE.fieldNotFound`: Rule field with the given name was not found.<br/>" +
 
       "`RELEASE.hasDependents`: Cannot delete release because other releases depend on it.",
     required: false
