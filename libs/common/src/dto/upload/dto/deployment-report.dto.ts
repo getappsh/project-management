@@ -1,6 +1,20 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { IsArray, IsBoolean, IsNotEmpty, IsOptional, ArrayMinSize } from "class-validator";
 
+export class DeviceDeploymentDetailDto {
+  @ApiProperty({ description: 'Device ID', type: String })
+  deviceId: string;
+
+  @ApiProperty({ description: 'Device name', type: String, required: false })
+  deviceName?: string;
+
+  @ApiProperty({ description: 'Delivery status (e.g., DONE, PENDING, IN_PROGRESS)', type: String, required: false })
+  deliveryStatus?: string;
+
+  @ApiProperty({ description: 'Deploy/Installation status (e.g., DONE, PENDING, IN_PROGRESS)', type: String, required: false })
+  deployStatus?: string;
+}
+
 export class ReleaseReportDto {
   @ApiProperty({ description: 'Project ID', type: Number })
   projectId: number;
@@ -22,9 +36,6 @@ export class ReleaseReportDto {
 
   @ApiProperty({ description: 'Number of devices with ongoing delivery process (includes devices waiting for download and mid-deployment)', type: Number })
   activeDeliveryCount: number;
-
-  @ApiProperty({ description: 'Number of devices the release is offered to based on device type', type: Number })
-  offeredDevicesCount: number;
 
   @ApiProperty({ description: 'Deployment percentage calculated as (installedCount / activeDeliveryCount) * 100', type: Number })
   deploymentPercentage: number;
@@ -49,11 +60,11 @@ export class DeploymentReportDto {
   @ApiProperty({ description: 'Number of devices with ongoing delivery process (includes devices waiting for download and mid-deployment)', type: Number })
   activeDeliveryCount: number;
 
-  @ApiProperty({ description: 'Number of devices the release is offered to based on device type', type: Number })
-  offeredDevicesCount: number;
-
   @ApiProperty({ description: 'Deployment percentage calculated as (installedCount / activeDeliveryCount) * 100', type: Number })
   deploymentPercentage: number;
+
+  @ApiProperty({ description: 'List of devices with their deployment statuses', type: [DeviceDeploymentDetailDto] })
+  devices: DeviceDeploymentDetailDto[];
 }
 
 export class GetDeploymentReportParams {
@@ -78,7 +89,6 @@ export class SystemWideDeploymentReportDto {
           downloadedCount: 10,
           installedCount: 8,
           activeDeliveryCount: 12,
-          offeredDevicesCount: 15,
           deploymentPercentage: 66.67
         }
       ],
@@ -91,7 +101,6 @@ export class SystemWideDeploymentReportDto {
           downloadedCount: 5,
           installedCount: 4,
           activeDeliveryCount: 6,
-          offeredDevicesCount: 10,
           deploymentPercentage: 66.67
         }
       ]
@@ -123,7 +132,6 @@ export class ProjectDeploymentReportDto {
           downloadedCount: 10,
           installedCount: 8,
           activeDeliveryCount: 12,
-          offeredDevicesCount: 15,
           deploymentPercentage: 66.67
         }
       ]
@@ -155,7 +163,6 @@ export class MultiProjectDeploymentReportDto {
           downloadedCount: 10,
           installedCount: 8,
           activeDeliveryCount: 12,
-          offeredDevicesCount: 15,
           deploymentPercentage: 66.67
         }
       ],
@@ -168,7 +175,6 @@ export class MultiProjectDeploymentReportDto {
           downloadedCount: 5,
           installedCount: 4,
           activeDeliveryCount: 6,
-          offeredDevicesCount: 10,
           deploymentPercentage: 66.67
         }
       ]

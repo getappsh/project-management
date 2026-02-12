@@ -460,7 +460,6 @@ export class DeploymentReportCacheService {
       downloadedCount: deploymentReport.downloadedCount,
       installedCount: deploymentReport.installedCount,
       activeDeliveryCount: deploymentReport.activeDeliveryCount,
-      offeredDevicesCount: deploymentReport.offeredDevicesCount,
       deploymentPercentage: deploymentReport.deploymentPercentage,
     };
   }
