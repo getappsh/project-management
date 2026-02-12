@@ -270,29 +270,21 @@ export class ProjectManagementController {
   }
 
   @MessagePattern(ProjectManagementTopics.GET_SYSTEM_WIDE_DEPLOYMENT_REPORT)
-  async getSystemWideDeploymentReport(@RpcPayload() params?: GetSystemWideDeploymentReportParams): Promise<SystemWideDeploymentReportDto> {
-    this.logger.log(`Getting system-wide deployment report. Force refresh: ${params?.forceRefresh ?? false}`);
-    return this.deploymentReportCacheService.getSystemWideDeploymentReport(params);
+  async getSystemWideDeploymentReport(@RpcPayload() data: { userEmail: string; forceRefresh?: boolean }): Promise<SystemWideDeploymentReportDto> {
+    this.logger.log(`Getting system-wide deployment report for user: ${data.userEmail}. Force refresh: ${data.forceRefresh ?? false}`);
+    return this.deploymentReportCacheService.getSystemWideDeploymentReport(data.userEmail, { forceRefresh: data.forceRefresh });
   }
 
   @MessagePattern(ProjectManagementTopics.GET_PROJECT_DEPLOYMENT_REPORT)
-  async getProjectDeploymentReport(@RpcPayload() data: { projectIdentifier: number | string; forceRefresh?: boolean }): Promise<ProjectDeploymentReportDto> {
-    this.logger.log(`Getting project deployment report for project: ${data.projectIdentifier}. Force refresh: ${data.forceRefresh ?? false}`);
-    const params: GetProjectDeploymentReportParams = {
-      projectIdentifier: data.projectIdentifier,
-      forceRefresh: data.forceRefresh,
-    };
-    return this.deploymentReportCacheService.getProjectDeploymentReport(data.projectIdentifier, params);
+  async getProjectDeploymentReport(@RpcPayload() data: { userEmail: string; projectIdentifier: number | string; forceRefresh?: boolean }): Promise<ProjectDeploymentReportDto> {
+    this.logger.log(`Getting project deployment report for user: ${data.userEmail}, project: ${data.projectIdentifier}. Force refresh: ${data.forceRefresh ?? false}`);
+    return this.deploymentReportCacheService.getProjectDeploymentReport(data.userEmail, data.projectIdentifier, { forceRefresh: data.forceRefresh });
   }
 
   @MessagePattern(ProjectManagementTopics.GET_MULTI_PROJECT_DEPLOYMENT_REPORT)
-  async getMultiProjectDeploymentReport(@RpcPayload() data: { projectIdentifiers: (number | string)[]; forceRefresh?: boolean }): Promise<MultiProjectDeploymentReportDto> {
-    this.logger.log(`Getting multi-project deployment report for projects: ${data.projectIdentifiers.join(', ')}. Force refresh: ${data.forceRefresh ?? false}`);
-    const params: GetMultiProjectDeploymentReportParams = {
-      projectIdentifiers: data.projectIdentifiers,
-      forceRefresh: data.forceRefresh,
-    };
-    return this.deploymentReportCacheService.getMultiProjectDeploymentReport(data.projectIdentifiers, params);
+  async getMultiProjectDeploymentReport(@RpcPayload() data: { userEmail: string; projectIdentifiers: (number | string)[]; forceRefresh?: boolean }): Promise<MultiProjectDeploymentReportDto> {
+    this.logger.log(`Getting multi-project deployment report for user: ${data.userEmail}, projects: ${data.projectIdentifiers.join(', ')}. Force refresh: ${data.forceRefresh ?? false}`);
+    return this.deploymentReportCacheService.getMultiProjectDeploymentReport(data.userEmail, data.projectIdentifiers, { forceRefresh: data.forceRefresh });
   }
 
   @MessagePattern(ProjectManagementTopics.CHECK_HEALTH)

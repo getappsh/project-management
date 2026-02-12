@@ -1,7 +1,7 @@
-import { Injectable, Logger, Inject } from '@nestjs/common';
+import { Injectable, Logger, Inject, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
-import { DeploymentReportCacheEntity, ProjectEntity, ReleaseEntity } from '@app/common/database/entities';
+import { DeploymentReportCacheEntity, ProjectEntity, ReleaseEntity, MemberProjectEntity } from '@app/common/database/entities';
 import {
   DeploymentReportDto,
   ReleaseReportDto,
@@ -32,6 +32,8 @@ export class DeploymentReportCacheService {
     private readonly projectRepo: Repository<ProjectEntity>,
     @InjectRepository(ReleaseEntity)
     private readonly releaseRepo: Repository<ReleaseEntity>,
+    @InjectRepository(MemberProjectEntity)
+    private readonly memberProjectRepo: Repository<MemberProjectEntity>,
     @Inject(MicroserviceName.UPLOAD_SERVICE) private readonly uploadClient: MicroserviceClient,
     private readonly configService: ConfigService,
   ) {
@@ -47,13 +49,17 @@ export class DeploymentReportCacheService {
   }
 
   async getSystemWideDeploymentReport(
+    userEmail: string,
     params?: GetSystemWideDeploymentReportParams
   ): Promise<SystemWideDeploymentReportDto> {
-    this.logger.log('Fetching system-wide deployment report');
+    this.logger.log(`Fetching system-wide deployment report for user: ${userEmail}`);
 
     try {
+      // Get projects the user has access to
+      const userProjectIds = await this.getUserProjectIds(userEmail);
+      
       if (!params?.forceRefresh) {
-        const cachedReport = await this.getSystemWideReportFromCache();
+        const cachedReport = await this.getSystemWideReportFromCache(userProjectIds);
         if (cachedReport) {
           this.logger.log('System-wide deployment report retrieved from cache');
           return cachedReport;
@@ -61,7 +67,7 @@ export class DeploymentReportCacheService {
       }
 
       this.logger.log('Generating fresh system-wide deployment report');
-      return await this.generateSystemWideDeploymentReport();
+      return await this.generateSystemWideDeploymentReport(userProjectIds);
     } catch (error) {
       this.logger.error(`Error fetching system-wide deployment report: ${error.message}`);
       throw error;
@@ -69,10 +75,11 @@ export class DeploymentReportCacheService {
   }
 
   async getProjectDeploymentReport(
+    userEmail: string,
     projectIdentifier: number | string,
     params?: GetProjectDeploymentReportParams
   ): Promise<ProjectDeploymentReportDto> {
-    this.logger.log(`Fetching deployment report for project: ${projectIdentifier}`);
+    this.logger.log(`Fetching deployment report for user: ${userEmail}, project: ${projectIdentifier}`);
 
     try {
       const project = await this.getProject(projectIdentifier);
@@ -80,16 +87,37 @@ export class DeploymentReportCacheService {
         throw new Error(`Project not found: ${projectIdentifier}`);
       }
 
+      // Check if user has access to this project
+      const hasAccess = await this.userHasAccessToProject(userEmail, project.id);
+      if (!hasAccess) {
+        throw new UnauthorizedException(`User ${userEmail} does not have access to project ${project.id}`);
+      }
+
+      let internalReport: { projectId: number; projectName: string; reports: DeploymentReportDto[]; generatedAt: Date };
+
       if (!params?.forceRefresh) {
         const cachedReport = await this.getProjectReportFromCache(project.id);
         if (cachedReport) {
           this.logger.log(`Project deployment report retrieved from cache for project: ${project.id}`);
-          return cachedReport;
+          internalReport = cachedReport;
+        } else {
+          internalReport = await this.generateProjectDeploymentReport(project);
         }
+      } else {
+        this.logger.log(`Generating fresh deployment report for project: ${project.id}`);
+        internalReport = await this.generateProjectDeploymentReport(project);
       }
-
-      this.logger.log(`Generating fresh deployment report for project: ${project.id}`);
-      return await this.generateProjectDeploymentReport(project);
+      
+      // Convert to new structure
+      const releaseReports = internalReport.reports.map(report => 
+        this.convertToReleaseReport(report, internalReport.projectId, internalReport.projectName)
+      );
+      return {
+        reports: { [project.name]: releaseReports },
+        generatedAt: internalReport.generatedAt,
+        totalProjects: 1,
+        totalReleases: releaseReports.length,
+      };
     } catch (error) {
       this.logger.error(`Error fetching deployment report for project ${projectIdentifier}: ${error.message}`);
       throw error;
@@ -97,47 +125,68 @@ export class DeploymentReportCacheService {
   }
 
   async getMultiProjectDeploymentReport(
+    userEmail: string,
     projectIdentifiers: (number | string)[],
     params?: GetMultiProjectDeploymentReportParams
   ): Promise<MultiProjectDeploymentReportDto> {
-    this.logger.log(`Fetching deployment reports for projects: ${projectIdentifiers.join(', ')}`);
+    this.logger.log(`Fetching deployment reports for user: ${userEmail}, projects: ${projectIdentifiers?.join(', ') ?? 'none'}`);
 
     try {
-      const projects = await this.getProjects(projectIdentifiers);
-      if (projects.length === 0) {
-        throw new Error(`No projects found for identifiers: ${projectIdentifiers.join(', ')}`);
+      // Validation: Check if projectIdentifiers is provided and is not empty
+      if (!projectIdentifiers || !Array.isArray(projectIdentifiers) || projectIdentifiers.length === 0) {
+        throw new Error('Project identifiers are required and must be a non-empty array');
       }
 
-      const projectReports: ProjectDeploymentReportDto[] = [];
+      const projects = await this.getProjects(projectIdentifiers);
+      
+      // Validation: Check if any valid projects were found
+      if (projects.length === 0) {
+        throw new Error(`No valid projects found for identifiers: ${projectIdentifiers.join(', ')}`);
+      }
+
+      // Check if user has access to all requested projects
+      const userProjectIds = await this.getUserProjectIds(userEmail);
+      const unauthorizedProjects = projects.filter(p => !userProjectIds.includes(p.id));
+      
+      if (unauthorizedProjects.length > 0) {
+        const unauthorizedNames = unauthorizedProjects.map(p => p.name).join(', ');
+        throw new UnauthorizedException(`User ${userEmail} does not have access to projects: ${unauthorizedNames}`);
+      }
+
+      const reportsByProject: Record<string, ReleaseReportDto[]> = {};
       let totalReleases = 0;
+      const generatedAt = new Date();
 
       for (const project of projects) {
         try {
-          let report: ProjectDeploymentReportDto;
+          let internalReport: { projectId: number; projectName: string; reports: DeploymentReportDto[]; generatedAt: Date };
 
           if (!params?.forceRefresh) {
             const cachedReport = await this.getProjectReportFromCache(project.id);
             if (cachedReport) {
               this.logger.log(`Project report retrieved from cache for project: ${project.id}`);
-              report = cachedReport;
+              internalReport = cachedReport as any;
             } else {
-              report = await this.generateProjectDeploymentReport(project);
+              internalReport = await this.generateProjectDeploymentReport(project);
             }
           } else {
-            report = await this.generateProjectDeploymentReport(project);
+            internalReport = await this.generateProjectDeploymentReport(project);
           }
 
-          projectReports.push(report);
-          totalReleases += report.reports.length;
+          const releaseReports = internalReport.reports.map(report => 
+            this.convertToReleaseReport(report, internalReport.projectId, internalReport.projectName)
+          );
+          reportsByProject[project.name] = releaseReports;
+          totalReleases += releaseReports.length;
         } catch (error) {
           this.logger.warn(`Failed to generate report for project ${project.id}: ${error.message}`);
         }
       }
 
       return {
-        projects: projectReports,
-        generatedAt: new Date(),
-        totalProjects: projectReports.length,
+        reports: reportsByProject,
+        generatedAt,
+        totalProjects: Object.keys(reportsByProject).length,
         totalReleases,
       };
     } catch (error) {
@@ -188,8 +237,11 @@ export class DeploymentReportCacheService {
 
   // ============ Private Helper Methods ============
 
-  private async generateSystemWideDeploymentReport(): Promise<SystemWideDeploymentReportDto> {
-    const allProjects = await this.projectRepo.find();
+  private async generateSystemWideDeploymentReport(userProjectIds: number[]): Promise<SystemWideDeploymentReportDto> {
+    // Filter projects to only those the user has access to
+    const allProjects = await this.projectRepo.find({
+      where: userProjectIds.length > 0 ? { id: In(userProjectIds) } : {},
+    });
     const reportsByProject: Record<string, ReleaseReportDto[]> = {};
     const generatedAt = new Date();
     let processedCount = 0;
@@ -201,7 +253,9 @@ export class DeploymentReportCacheService {
         const projectReport = await this.generateProjectDeploymentReport(project);
         
         // Convert DeploymentReportDto[] to ReleaseReportDto[]
-        const releaseReports = projectReport.reports.map(report => this.convertToReleaseReport(report));
+        const releaseReports = projectReport.reports.map(report => 
+          this.convertToReleaseReport(report, projectReport.projectId, projectReport.projectName)
+        );
         reportsByProject[project.name] = releaseReports;
         totalReleases += releaseReports.length;
         
@@ -231,7 +285,7 @@ export class DeploymentReportCacheService {
     };
   }
 
-  private async generateProjectDeploymentReport(project: ProjectEntity): Promise<ProjectDeploymentReportDto> {
+  private async generateProjectDeploymentReport(project: ProjectEntity): Promise<{ projectId: number; projectName: string; reports: DeploymentReportDto[]; generatedAt: Date }> {
     const releases = await this.releaseRepo.find({
       where: { project: { id: project.id } },
     });
@@ -284,7 +338,7 @@ export class DeploymentReportCacheService {
     }
   }
 
-  private async getSystemWideReportFromCache(): Promise<SystemWideDeploymentReportDto | null> {
+  private async getSystemWideReportFromCache(userProjectIds: number[]): Promise<SystemWideDeploymentReportDto | null> {
     const allCaches = await this.cacheRepo.find({
       relations: { project: true },
       order: { cachedAt: 'DESC' },
@@ -300,14 +354,19 @@ export class DeploymentReportCacheService {
       return null;
     }
 
-    const allProjects = await this.projectRepo.find();
+    // Filter projects to only those the user has access to
+    const allProjects = await this.projectRepo.find({
+      where: userProjectIds.length > 0 ? { id: In(userProjectIds) } : {},
+    });
     const reportsByProject: Record<string, ReleaseReportDto[]> = {};
     let totalReleases = 0;
 
     for (const project of allProjects) {
       const cache = allCaches.find(c => c.project.id === project.id);
       if (cache && cache.reportData) {
-        const releaseReports = cache.reportData.reports.map(report => this.convertToReleaseReport(report));
+        const releaseReports = cache.reportData.reports.map(report => 
+          this.convertToReleaseReport(report, cache.reportData.projectId, cache.reportData.projectName)
+        );
         reportsByProject[project.name] = releaseReports;
         totalReleases += releaseReports.length;
       }
@@ -321,7 +380,7 @@ export class DeploymentReportCacheService {
     };
   }
 
-  private async getProjectReportFromCache(projectId: number): Promise<ProjectDeploymentReportDto | null> {
+  private async getProjectReportFromCache(projectId: number): Promise<any | null> {
     const cache = await this.cacheRepo.findOne({
       where: { project: { id: projectId } },
       relations: { project: true },
@@ -337,10 +396,11 @@ export class DeploymentReportCacheService {
       return null;
     }
 
-    return cache.reportData as ProjectDeploymentReportDto;
+    // Return the internal format with projectId, projectName, and reports array
+    return cache.reportData as { projectId: number; projectName: string; reports: DeploymentReportDto[]; generatedAt: Date };
   }
 
-  private async cacheProjectReport(project: ProjectEntity, report: ProjectDeploymentReportDto): Promise<void> {
+  private async cacheProjectReport(project: ProjectEntity, report: { projectId: number; projectName: string; reports: DeploymentReportDto[]; generatedAt: Date }): Promise<void> {
     let cache = await this.cacheRepo.findOneBy({ project: { id: project.id } });
 
     if (!cache) {
@@ -391,8 +451,10 @@ export class DeploymentReportCacheService {
     return Array.from(new Map(projects.map(p => [p.id, p])).values());
   }
 
-  private convertToReleaseReport(deploymentReport: DeploymentReportDto): ReleaseReportDto {
+  private convertToReleaseReport(deploymentReport: DeploymentReportDto, projectId: number, projectName: string): ReleaseReportDto {
     return {
+      projectId,
+      projectName,
       releaseName: deploymentReport.releaseName,
       version: deploymentReport.version,
       downloadedCount: deploymentReport.downloadedCount,
@@ -401,5 +463,33 @@ export class DeploymentReportCacheService {
       offeredDevicesCount: deploymentReport.offeredDevicesCount,
       deploymentPercentage: deploymentReport.deploymentPercentage,
     };
+  }
+
+  /**
+   * Get list of project IDs that the user has access to
+   */
+  private async getUserProjectIds(userEmail: string): Promise<number[]> {
+    const memberProjects = await this.memberProjectRepo.find({
+      where: {
+        member: { email: userEmail },
+      },
+      relations: ['project'],
+    });
+
+    return memberProjects.map(mp => mp.project.id);
+  }
+
+  /**
+   * Check if user has access to a specific project
+   */
+  private async userHasAccessToProject(userEmail: string, projectId: number): Promise<boolean> {
+    const memberProject = await this.memberProjectRepo.findOne({
+      where: {
+        member: { email: userEmail },
+        project: { id: projectId },
+      },
+    });
+
+    return !!memberProject;
   }
 }

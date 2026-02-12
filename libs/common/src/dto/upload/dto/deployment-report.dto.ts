@@ -1,6 +1,13 @@
 import { ApiProperty } from "@nestjs/swagger";
+import { IsArray, IsBoolean, IsNotEmpty, IsOptional, ArrayMinSize } from "class-validator";
 
 export class ReleaseReportDto {
+  @ApiProperty({ description: 'Project ID', type: Number })
+  projectId: number;
+
+  @ApiProperty({ description: 'Project name', type: String })
+  projectName: string;
+
   @ApiProperty({ description: 'Release name', type: String })
   releaseName: string;
 
@@ -61,9 +68,33 @@ export class SystemWideDeploymentReportDto {
   @ApiProperty({ 
     description: 'Deployment reports organized by project name, each containing an array of release reports',
     type: 'object',
-    additionalProperties: {
-      type: 'array',
-      items: { $ref: '#/components/schemas/ReleaseReportDto' }
+    example: {
+      'ProjectA': [
+        {
+          projectId: 1,
+          projectName: 'ProjectA',
+          releaseName: 'v1.0.0',
+          version: '1.0.0',
+          downloadedCount: 10,
+          installedCount: 8,
+          activeDeliveryCount: 12,
+          offeredDevicesCount: 15,
+          deploymentPercentage: 66.67
+        }
+      ],
+      'ProjectB': [
+        {
+          projectId: 2,
+          projectName: 'ProjectB',
+          releaseName: 'v2.0.0',
+          version: '2.0.0',
+          downloadedCount: 5,
+          installedCount: 4,
+          activeDeliveryCount: 6,
+          offeredDevicesCount: 10,
+          deploymentPercentage: 66.67
+        }
+      ]
     }
   })
   reports: Record<string, ReleaseReportDto[]>;
@@ -79,22 +110,71 @@ export class SystemWideDeploymentReportDto {
 }
 
 export class ProjectDeploymentReportDto {
-  @ApiProperty({ description: 'Project ID', type: Number })
-  projectId: number;
-
-  @ApiProperty({ description: 'Project name', type: String, required: false })
-  projectName?: string;
-
-  @ApiProperty({ description: 'Array of deployment reports for this project\'s releases', type: [DeploymentReportDto] })
-  reports: DeploymentReportDto[];
+  @ApiProperty({ 
+    description: 'Deployment reports organized by project name, each containing an array of release reports',
+    type: 'object',
+    example: {
+      'ProjectA': [
+        {
+          projectId: 1,
+          projectName: 'ProjectA',
+          releaseName: 'v1.0.0',
+          version: '1.0.0',
+          downloadedCount: 10,
+          installedCount: 8,
+          activeDeliveryCount: 12,
+          offeredDevicesCount: 15,
+          deploymentPercentage: 66.67
+        }
+      ]
+    }
+  })
+  reports: Record<string, ReleaseReportDto[]>;
 
   @ApiProperty({ description: 'Timestamp when the report was generated', type: Date })
   generatedAt: Date;
+
+  @ApiProperty({ description: 'Total number of projects', type: Number })
+  totalProjects: number;
+
+  @ApiProperty({ description: 'Total number of releases', type: Number })
+  totalReleases: number;
 }
 
 export class MultiProjectDeploymentReportDto {
-  @ApiProperty({ description: 'Array of project deployment reports', type: [ProjectDeploymentReportDto] })
-  projects: ProjectDeploymentReportDto[];
+  @ApiProperty({ 
+    description: 'Deployment reports organized by project name, each containing an array of release reports',
+    type: 'object',
+    example: {
+      'ProjectA': [
+        {
+          projectId: 1,
+          projectName: 'ProjectA',
+          releaseName: 'v1.0.0',
+          version: '1.0.0',
+          downloadedCount: 10,
+          installedCount: 8,
+          activeDeliveryCount: 12,
+          offeredDevicesCount: 15,
+          deploymentPercentage: 66.67
+        }
+      ],
+      'ProjectB': [
+        {
+          projectId: 2,
+          projectName: 'ProjectB',
+          releaseName: 'v2.0.0',
+          version: '2.0.0',
+          downloadedCount: 5,
+          installedCount: 4,
+          activeDeliveryCount: 6,
+          offeredDevicesCount: 10,
+          deploymentPercentage: 66.67
+        }
+      ]
+    }
+  })
+  reports: Record<string, ReleaseReportDto[]>;
 
   @ApiProperty({ description: 'Timestamp when the report was generated', type: Date })
   generatedAt: Date;
@@ -112,17 +192,15 @@ export class GetSystemWideDeploymentReportParams {
 }
 
 export class GetProjectDeploymentReportParams {
-  @ApiProperty({ description: 'Project ID or name', type: [Number, String] })
-  projectIdentifier: number | string;
-
   @ApiProperty({ description: 'Whether to generate a fresh report or use cached data', type: Boolean, required: false })
+  @IsOptional()
+  @IsBoolean()
   forceRefresh?: boolean;
 }
 
 export class GetMultiProjectDeploymentReportParams {
-  @ApiProperty({ description: 'List of project IDs or names to include in the report', type: [Number, String] })
-  projectIdentifiers: (number | string)[];
-
   @ApiProperty({ description: 'Whether to generate a fresh report or use cached data', type: Boolean, required: false })
+  @IsOptional()
+  @IsBoolean()
   forceRefresh?: boolean;
 }
