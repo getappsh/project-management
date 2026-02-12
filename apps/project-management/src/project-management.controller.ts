@@ -34,6 +34,8 @@ import { RegulationService } from './regulation.service';
 import { UserSearchDto } from '@app/common/oidc/oidc.interface';
 import { ValidateProjectAnyAccess, ValidateProjectUserAccess } from '@app/common/utils/project-access';
 import { ProjectReleasesChangedEvent } from '@app/common/dto/project-management';
+import { DeploymentReportCacheService } from './deployment-report-cache.service';
+import { GetSystemWideDeploymentReportParams, GetProjectDeploymentReportParams, GetMultiProjectDeploymentReportParams, SystemWideDeploymentReportDto, ProjectDeploymentReportDto, MultiProjectDeploymentReportDto } from '@app/common/dto/upload';
 
 @Controller()
 @UseInterceptors(UserContextInterceptor)
@@ -42,7 +44,8 @@ export class ProjectManagementController {
 
   constructor(
     private readonly projectManagementService: ProjectManagementService,
-    private readonly regulationService: RegulationService
+    private readonly regulationService: RegulationService,
+    private readonly deploymentReportCacheService: DeploymentReportCacheService
   ) { }
 
   @MessagePattern(ProjectManagementTopics.GET_USERS)
@@ -266,6 +269,32 @@ export class ProjectManagementController {
     return this.projectManagementService.deleteProjectToken(params)
   }
 
+  @MessagePattern(ProjectManagementTopics.GET_SYSTEM_WIDE_DEPLOYMENT_REPORT)
+  async getSystemWideDeploymentReport(@RpcPayload() params?: GetSystemWideDeploymentReportParams): Promise<SystemWideDeploymentReportDto> {
+    this.logger.log(`Getting system-wide deployment report. Force refresh: ${params?.forceRefresh ?? false}`);
+    return this.deploymentReportCacheService.getSystemWideDeploymentReport(params);
+  }
+
+  @MessagePattern(ProjectManagementTopics.GET_PROJECT_DEPLOYMENT_REPORT)
+  async getProjectDeploymentReport(@RpcPayload() data: { projectIdentifier: number | string; forceRefresh?: boolean }): Promise<ProjectDeploymentReportDto> {
+    this.logger.log(`Getting project deployment report for project: ${data.projectIdentifier}. Force refresh: ${data.forceRefresh ?? false}`);
+    const params: GetProjectDeploymentReportParams = {
+      projectIdentifier: data.projectIdentifier,
+      forceRefresh: data.forceRefresh,
+    };
+    return this.deploymentReportCacheService.getProjectDeploymentReport(data.projectIdentifier, params);
+  }
+
+  @MessagePattern(ProjectManagementTopics.GET_MULTI_PROJECT_DEPLOYMENT_REPORT)
+  async getMultiProjectDeploymentReport(@RpcPayload() data: { projectIdentifiers: (number | string)[]; forceRefresh?: boolean }): Promise<MultiProjectDeploymentReportDto> {
+    this.logger.log(`Getting multi-project deployment report for projects: ${data.projectIdentifiers.join(', ')}. Force refresh: ${data.forceRefresh ?? false}`);
+    const params: GetMultiProjectDeploymentReportParams = {
+      projectIdentifiers: data.projectIdentifiers,
+      forceRefresh: data.forceRefresh,
+    };
+    return this.deploymentReportCacheService.getMultiProjectDeploymentReport(data.projectIdentifiers, params);
+  }
+
   @MessagePattern(ProjectManagementTopics.CHECK_HEALTH)
   healthCheckSuccess() {
     const version = this.readImageVersion()
@@ -276,6 +305,11 @@ export class ProjectManagementController {
   @EventPattern(ProjectManagementTopicsEmit.PROJECT_RELEASES_CHANGED)
   onProjectReleasesChanged(@RpcPayload() event: ProjectReleasesChangedEvent) {
     this.projectManagementService.onProjectReleasesChanged(event)
+  }
+
+  @EventPattern(ProjectManagementTopicsEmit.DEPLOYMENT_REPORT_REQUESTED)
+  onDeploymentReportRequested(@RpcPayload() data: { projectIdentifier: number | string; projectId?: number; version: string; requesterEmail?: string; requestedAt?: string }) {
+    this.logger.log(`Deployment report requested for project: ${data.projectIdentifier}, version: ${data.version}, requester: ${data.requesterEmail ?? 'unknown'}`);
   }
 
 

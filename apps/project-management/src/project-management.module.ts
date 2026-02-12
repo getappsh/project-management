@@ -1,5 +1,5 @@
 import { DatabaseModule, UploadJwtConfigService,  } from '@app/common';
-import { MemberEntity, ProjectEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity, PlatformEntity, LabelEntity } from '@app/common/database/entities';
+import { MemberEntity, ProjectEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity, PlatformEntity, LabelEntity, ReleaseEntity, DeploymentReportCacheEntity } from '@app/common/database/entities';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -13,6 +13,9 @@ import { SeederService } from './utils/seeder.service';
 import { RegulationService } from './regulation.service';
 import { PROJECT_ACCESS_SERVICE } from '@app/common/utils/project-access';
 import { MicroserviceModule, MicroserviceName, MicroserviceType } from '@app/common/microservice-client';
+import { SafeCronModule } from '@app/common/safe-cron';
+import { DeploymentReportCacheService } from './deployment-report-cache.service';
+import { DeploymentReportCacheScheduleService } from './deployment-report-cache-schedule.service';
 
 @Module({
   imports: [
@@ -26,9 +29,11 @@ import { MicroserviceModule, MicroserviceName, MicroserviceType } from '@app/com
     TypeOrmModule.forFeature([
       MemberEntity, ProjectEntity, MemberProjectEntity, UploadVersionEntity, 
       RegulationEntity, RegulationTypeEntity, PlatformEntity,
-      DeviceEntity, ProjectTokenEntity, DocEntity, LabelEntity
+      DeviceEntity, ProjectTokenEntity, DocEntity, LabelEntity,
+      ReleaseEntity, DeploymentReportCacheEntity
     ]),
     OidcModule.forRoot(),
+    SafeCronModule,
     MicroserviceModule.register({
       name: MicroserviceName.UPLOAD_SERVICE,
       type: MicroserviceType.UPLOAD,
@@ -40,6 +45,8 @@ import { MicroserviceModule, MicroserviceName, MicroserviceType } from '@app/com
     ProjectManagementService, 
     RegulationService, 
     SeederService,
+    DeploymentReportCacheService,
+    DeploymentReportCacheScheduleService,
     {
       provide: PROJECT_ACCESS_SERVICE,
       useExisting: ProjectManagementService

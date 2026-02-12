@@ -119,13 +119,16 @@ export class SafeCronService implements OnModuleDestroy {
     }
     try{
       const lastJob = await this.findLastJob(jobName);
+      if (!lastJob) {
+        this.logger.warn(`No running job found to update start time for: ${jobName}`);
+        return;
+      }
       if (!lastJob.endTime){
         lastJob.startTime = new Date();
         await this.jobRepository.save(lastJob);
       }else{
         this.logger.warn(`No running job found to update start time for: ${jobName}`);
       }
-    
     }catch(error){ 
       this.logger.error(`Failed to update start time for job ${jobName}: ${error.message}`, error.stack);
     }
