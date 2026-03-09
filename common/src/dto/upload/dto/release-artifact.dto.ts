@@ -48,7 +48,10 @@ export class SetReleaseArtifactDto {
   @ApiProperty({ required: false})
   arguments: string
 
-  
+  @IsBoolean()
+  @IsOptional()
+  @ApiProperty({ required: false, description: 'Whether to trigger an SBOM scan for this artifact after upload. Defaults to true.', default: true })
+  enableSbomScan: boolean = true;
 
 }
 
