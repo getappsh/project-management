@@ -46,6 +46,8 @@ export const UploadTopics = {
     IMPORT_RELEASE: `getapp-upload.import-release${region}`,
     // Deployment Report
     GET_DEPLOYMENT_REPORT: `getapp-upload.get-deployment-report${region}`,
+    // Settings
+    GET_SBOM_ENABLED: `getapp-upload.get-sbom-enabled${region}`,
 
 } as const
 
