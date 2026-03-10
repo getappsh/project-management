@@ -297,6 +297,7 @@ export const SbomTopics = {
     GET_SCAN_STATUS: `getapp-sbom-generator.scan.status${region}`,
     GET_SCAN_RESULT: `getapp-sbom-generator.scan.result${region}`,
     GET_SCANS: `getapp-sbom-generator.scan.list${region}`,
+    DELETE_SCAN: `getapp-sbom-generator.scan.delete${region}`,
     CHECK_HEALTH: `getapp-sbom-generator.check-health${region}`,
 } as const
 
