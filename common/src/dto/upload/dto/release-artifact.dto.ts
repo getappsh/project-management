@@ -149,6 +149,16 @@ export class ReleaseArtifactDto {
   @IsString()
   sha256?: string
 
+  @IsBoolean()
+  @IsOptional()
+  @ApiProperty({ required: false, default: true, description: 'Whether SBOM scan is enabled for this artifact' })
+  enableSbomScan?: boolean
+
+  @ApiProperty({ required: false, type: 'string', description: 'SBOM scan ID associated with this artifact' })
+  @IsOptional()
+  @IsString()
+  sbomScanId?: string
+
 
   static fromEntity(artifact: ReleaseArtifactEntity): ReleaseArtifactDto {
     const dto = new ReleaseArtifactDto();
@@ -167,6 +177,8 @@ export class ReleaseArtifactDto {
     dto.sha256 = artifact?.fileUpload?.sha256
     dto.arguments = artifact?.arguments;
     dto.isExecutable = artifact?.isExecutable;
+    dto.enableSbomScan = artifact?.enableSbomScan ?? true;
+    dto.sbomScanId = artifact?.sbomScanId;
 
     return dto
   }
