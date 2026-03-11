@@ -303,6 +303,7 @@ export const DeviceBugReportTopics = {
 
 export const SbomTopics = {
     SCAN_REQUEST: `getapp-sbom-generator.scan.request${region}`,
+    RETRY_SCAN: `getapp-sbom-generator.scan.retry${region}`,
     GET_SCAN_STATUS: `getapp-sbom-generator.scan.status${region}`,
     GET_SCAN_RESULT: `getapp-sbom-generator.scan.result${region}`,
     GET_SCANS: `getapp-sbom-generator.scan.list${region}`,
