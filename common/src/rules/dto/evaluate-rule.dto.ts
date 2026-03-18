@@ -22,6 +22,7 @@ export interface EvaluatedDeviceDto {
   serialNumber?: string;
   platformName?: string;
   deviceTypeNames?: string[];
+  groupNames?: string[];
 }
 
 export interface AttachedReleaseDto {
