@@ -19,12 +19,47 @@ export class RuleEvaluationService {
     const RuleEngine = await this.ruleEnginePromise;
     const ruleEngine = RuleEngine.getInstance();
 
-    const result = await ruleEngine.evaluate(rule, context);
+    // The rule-engine resolves fields by flat key lookup after stripping the
+    // leading `$` (e.g. `$.device.os` → key `"device.os"`).  We must flatten
+    // the nested context to dot-notation keys before evaluation.
+    const flatContext = this.flattenContext(context);
+
+    const result = await ruleEngine.evaluate(rule, flatContext);
 
     // Handle both boolean and object return shapes
     if (typeof result === 'boolean') {
       return result;
     }
     return result?.result ?? result?.passed ?? false;
+  }
+
+  /**
+   * Recursively flattens a nested object to dot-notation keys.
+   * Arrays are kept as-is (not recursed into) so array operators still work.
+   *
+   * Example:
+   *   { device: { os: 'macos', any: true } }
+   *   → { 'device.os': 'macos', 'device.any': true }
+   */
+  private flattenContext(
+    obj: Record<string, any>,
+    prefix = '',
+    result: Record<string, any> = {},
+  ): Record<string, any> {
+    for (const key of Object.keys(obj)) {
+      const flatKey = prefix ? `${prefix}.${key}` : key;
+      const value = obj[key];
+      if (
+        value !== null &&
+        value !== undefined &&
+        typeof value === 'object' &&
+        !Array.isArray(value)
+      ) {
+        this.flattenContext(value, flatKey, result);
+      } else {
+        result[flatKey] = value;
+      }
+    }
+    return result;
   }
 }
