@@ -47,4 +47,7 @@ export class ReleaseArtifactEntity extends BaseEntity {
   @Column({ name: 'enable_sbom_scan', type: 'boolean', default: false })
   enableSbomScan: boolean;
 
+  @Column({ name: 'sbom_report_path', type: 'varchar', nullable: true, default: null })
+  sbomReportPath?: string | null;
+
 }
