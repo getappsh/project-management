@@ -22,7 +22,7 @@ export class RuleEvaluationService {
     // The rule-engine resolves fields by flat key lookup after stripping the
     // leading `$` (e.g. `$.device.os` → key `"device.os"`).  We must flatten
     // the nested context to dot-notation keys before evaluation.
-    const flatContext = this.addFieldAliases(this.flattenContext(context));
+    const flatContext = this.flattenContext(context);
 
     const result = await ruleEngine.evaluate(rule, flatContext);
 
@@ -31,28 +31,6 @@ export class RuleEvaluationService {
       return result;
     }
     return result?.isPassed ?? result?.result ?? result?.passed ?? false;
-  }
-
-  /**
-   * Maps known flat-context keys to the canonical available-field names used
-   * by rule definitions.  A new key is only added when the source key exists
-   * in the context but the target key does not yet.
-   */
-  private readonly FIELD_ALIASES: Record<string, string> = {
-    'device.os': 'device.os.name',
-    'device.deviceName': 'device.name',
-    'device.mac': 'device.macAddress',
-    'device.availableStorage': 'device.storage.available',
-    'device.power': 'device.battery.level',
-  };
-
-  private addFieldAliases(context: Record<string, any>): Record<string, any> {
-    for (const [sourceKey, targetKey] of Object.entries(this.FIELD_ALIASES)) {
-      if (sourceKey in context && !(targetKey in context)) {
-        context[targetKey] = context[sourceKey];
-      }
-    }
-    return context;
   }
 
   /**
