@@ -7,6 +7,22 @@ export enum ScanStatus {
   FAILED = 'failed',
 }
 
+export enum SbomTargetType {
+  DOCKER_IMAGE = 'docker',
+  REGISTRY = 'registry',
+  FILE = 'file',
+  DIR = 'dir',
+  OCI_ARCHIVE = 'oci-archive',
+}
+
+export enum SbomFormat {
+  SYFT_JSON = 'syft-json',
+  SPDX_JSON = 'spdx-json',
+  CYCLONEDX_JSON = 'cyclonedx-json',
+  TABLE = 'table',
+  TEXT = 'text',
+}
+
 export class ScanStatusResponseDto {
   @ApiProperty({ description: 'Scan job UUID' })
   id: string;
@@ -17,17 +33,11 @@ export class ScanStatusResponseDto {
   @ApiProperty({ description: 'Scan target (image name, file path, registry URL, etc.)' })
   target: string;
 
-  @ApiProperty({
-    enum: ['docker', 'registry', 'file', 'dir', 'oci-archive'],
-    description: 'Type of the scan target',
-  })
-  targetType: string;
+  @ApiProperty({ enum: SbomTargetType, description: 'Type of the scan target' })
+  targetType: SbomTargetType;
 
-  @ApiProperty({
-    enum: ['syft-json', 'spdx-json', 'cyclonedx-json', 'table', 'text'],
-    description: 'SBOM output format',
-  })
-  format: string;
+  @ApiProperty({ enum: SbomFormat, description: 'SBOM output format' })
+  format: SbomFormat;
 
   @ApiPropertyOptional({ description: 'Who or what triggered this scan' })
   triggeredBy?: string;
