@@ -1,6 +1,7 @@
 import { Column, Entity, Index } from "typeorm";
 import { BaseEntity } from "./base.entity";
 import { FileUPloadStatusEnum } from "./enums.entity";
+import { StringNumberTransformer } from "./transformers/string-number.transformer";
 
 @Entity('file_upload')
 export class FileUploadEntity extends BaseEntity{
