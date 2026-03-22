@@ -230,6 +230,7 @@ export const DeviceTopics = {
     ADD_RULE_FIELD: `getapp-device.add-rule-field${region}`,
     REMOVE_RULE_FIELD: `getapp-device.remove-rule-field${region}`,
     EVALUATE_RESTRICTION: `getapp-device.evaluate-restriction${region}`,
+    GET_DEVICE_CONTEXT: `getapp-device.get-device-context${region}`,
     
     DISCOVER_DEVICE_CONTEXT_V2: `getapp-device.discover.device-context-V2${region}`,
     CHECK_HEALTH: `getapp-device.check-health${region}`, 
