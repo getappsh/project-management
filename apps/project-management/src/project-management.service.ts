@@ -91,7 +91,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
 
   async getProjects(query: GetProjectsQueryDto, email: string): Promise<PaginatedResultDto<ProjectDto>> {
     this.logger.debug(`Get projects with query: ${JSON.stringify(query)}`)
-    const { page = 1, perPage = 10, pinned, includePinned } = query;
+    const { page = 1, perPage = 10, pinned, includePinned, projectNames } = query;
 
     const pinnedQuery: { pinned?: boolean } = { pinned: undefined };
     if (includePinned === false) {
@@ -101,30 +101,53 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       pinnedQuery.pinned = true;
     }
 
-    const [projectsId, count] = await this.projectRepo.findAndCount({
-      select: { id: true },
-      where: {
+    // When projectNames is provided (e.g., from discovery service), skip user/member filtering
+    let whereCondition: any;
+    
+    if (projectNames && Array.isArray(projectNames) && projectNames.length > 0) {
+      // Direct lookup by project names without user context
+      whereCondition = {
+        name: In(projectNames)
+      };
+    } else {
+      // Normal user-context based filtering
+      whereCondition = {
         memberProject: {
           member: { email: email },
           ...pinnedQuery
         },
-      }
+      };
+    }
+
+    const [projectsId, count] = await this.projectRepo.findAndCount({
+      select: { id: true },
+      where: whereCondition
     });
 
+    // When filtering by projectNames, we don't need member relations
+    const needMemberRelations = !projectNames || projectNames.length === 0;
+
     const projectsEntities = await this.projectRepo.find({
-      select: { memberProject: true, releases: { catalogId: true } },
+      select: { 
+        memberProject: needMemberRelations,
+        releases: { catalogId: true } 
+      },
       where: {
         id: In(projectsId.map(project => project.id))
       },
-      relations: { memberProject: { member: true }, releases: true, label: true },
+      relations: needMemberRelations 
+        ? { memberProject: { member: true }, releases: true, label: true }
+        : { releases: true, label: true },
       skip: (page - 1) * perPage,
       take: perPage,
     })
 
     const projects = projectsEntities.map(project => {
       const dto = new ProjectDto().fromProjectEntity(project)
-      const member = project.memberProject.find(mp => mp.member.email === email);
-      dto.memberContext = member ? new ProjectMemberContextDto().fromMemberProjectEntity(member) : undefined;
+      if (needMemberRelations) {
+        const member = project.memberProject?.find(mp => mp.member.email === email);
+        dto.memberContext = member ? new ProjectMemberContextDto().fromMemberProjectEntity(member) : undefined;
+      }
       return dto
     });
 
