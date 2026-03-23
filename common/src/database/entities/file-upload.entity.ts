@@ -22,7 +22,7 @@ export class FileUploadEntity extends BaseEntity{
   @Column({ name: 'bucket_name' })
   bucketName: string
 
-  @Column({ nullable: true, type: 'bigint' })
+  @Column({ nullable: true, type: 'bigint', transformer: new StringNumberTransformer() })
   size?: number
   
   @Column({ name: 'content_type', nullable: true })
