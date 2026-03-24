@@ -68,13 +68,3 @@ export class GitSyncCompletedEvent {
   @ApiProperty()
   timestamp: Date;
 }
-
-export class GetappFileConfig {
-  version: string;
-  name?: string;
-  description?: string;
-  downloadUrl?: string;
-  platforms?: string[];
-  dependencies?: any[];
-  [key: string]: any;
-}
