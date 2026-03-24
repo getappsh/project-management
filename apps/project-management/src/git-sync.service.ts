@@ -1,16 +1,16 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan, IsNull } from 'typeorm';
-import { ProjectEntity } from '@app/common/database/entities';
+import { ProjectEntity, ProjectTokenEntity } from '@app/common/database/entities';
 import { 
   GitSyncResultDto, 
   GitSyncStatus, 
   TriggerGitSyncDto, 
   CheckReleaseExistsDto, 
   CheckReleaseExistsResultDto,
-  GitSyncCompletedEvent,
-  GetappFileConfig 
+  GitSyncCompletedEvent
 } from '@app/common/dto/project-management';
+import { ImportReleaseDto } from '@app/common/dto/delivery';
 import { Inject } from '@nestjs/common';
 import { MicroserviceClient, MicroserviceName } from '@app/common/microservice-client';
 import { UploadTopics, ProjectManagementTopicsEmit } from '@app/common/microservice-client/topics';
@@ -20,6 +20,8 @@ import * as path from 'path';
 import * as os from 'os';
 import { promisify } from 'util';
 import { exec } from 'child_process';
+import { ClsService } from 'nestjs-cls';
+import { JwtService } from '@nestjs/jwt';
 
 const execAsync = promisify(exec);
 
@@ -33,8 +35,12 @@ export class GitSyncService {
   constructor(
     @InjectRepository(ProjectEntity)
     private readonly projectRepo: Repository<ProjectEntity>,
+    @InjectRepository(ProjectTokenEntity)
+    private readonly tokenRepo: Repository<ProjectTokenEntity>,
     @Inject(MicroserviceName.UPLOAD_SERVICE)
     private readonly uploadClient: MicroserviceClient,
+    private readonly cls: ClsService,
+    private readonly jwtService: JwtService,
   ) {}
 
   /**
@@ -144,25 +150,29 @@ export class GitSyncService {
    */
   async checkReleaseExists(dto: CheckReleaseExistsDto): Promise<CheckReleaseExistsResultDto> {
     try {
-      const release = await lastValueFrom(
-        this.uploadClient.send(UploadTopics.GET_RELEASE_BY_VERSION, {
-          projectId: dto.projectId,
-          version: dto.version,
-        })
-      );
+      // Wrap in CLS context if needed for authentication
+      return await this.cls.run(async () => {
+        const release = await lastValueFrom(
+          this.uploadClient.send(UploadTopics.GET_RELEASE_BY_VERSION, {
+            projectIdentifier: dto.projectId,
+            version: dto.version,
+          })
+        );
 
-      if (release) {
-        return {
-          exists: true,
-          releaseId: release.id,
-        };
-      }
+        if (release) {
+          return {
+            exists: true,
+            releaseId: release.id,
+          };
+        }
+
+        return { exists: false };
+      });
     } catch (error) {
       // If not found, return false
       this.logger.debug(`Release ${dto.version} not found for project ${dto.projectId}`);
+      return { exists: false };
     }
-
-    return { exists: false };
   }
 
   /**
@@ -264,8 +274,9 @@ export class GitSyncService {
   /**
    * Read and parse .getapp file from repository
    * Searches for files with .getapp extension (e.g., .getapp, project.getapp, config.getapp)
+   * The file should be JSON format matching ImportReleaseDto structure
    */
-  private async readGetappFile(repoDir: string): Promise<GetappFileConfig | null> {
+  private async readGetappFile(repoDir: string): Promise<ImportReleaseDto | null> {
     try {
       // First try the exact .getapp file for backward compatibility
       let getappPath = path.join(repoDir, '.getapp');
@@ -292,25 +303,13 @@ export class GitSyncService {
 
       const fileContent = await fs.promises.readFile(getappPath, 'utf-8');
       
-      // Try parsing as JSON first, then YAML-like structure
-      try {
-        const config = JSON.parse(fileContent) as GetappFileConfig;
-        this.validateGetappConfig(config);
-        return config;
-      } catch (jsonError) {
-        // Simple YAML-like parsing for key:value format
-        const config: GetappFileConfig = { version: '' };
-        const lines = fileContent.split('\n');
-        for (const line of lines) {
-          const match = line.match(/^(\w+):\s*(.+)$/);
-          if (match) {
-            const [, key, value] = match;
-            config[key] = value.trim();
-          }
-        }
-        this.validateGetappConfig(config);
-        return config;
-      }
+      // Parse as JSON (ImportReleaseDto structure)
+      const config = JSON.parse(fileContent) as ImportReleaseDto;
+      this.validateGetappConfig(config);
+      
+      this.logger.log(`Parsed .getapp file with version ${config.version}, ${config.artifacts?.length || 0} artifacts, ${config.dockerImages?.length || 0} docker images`);
+      
+      return config;
     } catch (error) {
       this.logger.warn(`Could not read .getapp file: ${error.message}`);
       return null;
@@ -320,38 +319,116 @@ export class GitSyncService {
   /**
    * Validate .getapp file configuration
    */
-  private validateGetappConfig(config: GetappFileConfig): void {
+  private validateGetappConfig(config: ImportReleaseDto): void {
     if (!config.version) {
       throw new Error('.getapp file must contain a version field');
+    }
+    if (!config.createdAt) {
+      throw new Error('.getapp file must contain a createdAt field');
+    }
+    if (!config.author) {
+      throw new Error('.getapp file must contain an author field');
     }
   }
 
   /**
    * Trigger release import in upload microservice
    */
-  private async triggerReleaseImport(projectId: number, config: GetappFileConfig): Promise<void> {
+  private async triggerReleaseImport(projectId: number, config: ImportReleaseDto): Promise<void> {
     this.logger.log(`Triggering release import for project ${projectId}, version ${config.version}`);
 
-    const importDto = {
-      projectId,
-      version: config.version,
-      name: config.name,
-      description: config.description,
-      downloadUrl: config.downloadUrl,
-      platforms: config.platforms,
-      dependencies: config.dependencies,
-      // Mark as imported from git
-      isImported: true,
+    // Get a valid project token for authentication
+    const projectToken = await this.getOrCreateProjectToken(projectId);
+    
+    // Use config as-is (it's already an ImportReleaseDto), just set auth fields
+    const importDto: ImportReleaseDto = {
+      ...config,
+      // Override/ensure required authentication fields
+      project: config.project || projectId.toString(),
+      projectIdentifier: projectId,
+      // Ensure arrays exist (DTO validation requires them)
+      artifacts: config.artifacts || [],
+      dockerImages: config.dockerImages || [],
+      dependencies: config.dependencies || [],
+      // Add git sync metadata if not already present
+      metadata: {
+        ...config.metadata,
+        gitSync: true,
+      },
     };
 
     try {
-      await lastValueFrom(
-        this.uploadClient.send(UploadTopics.IMPORT_RELEASE, importDto)
-      );
+      // Wrap in CLS context to enable authentication
+      await this.cls.run(async () => {
+        // Set project token in CLS context for authentication
+        this.cls.set('projectToken', projectToken);
+        
+        await lastValueFrom(
+          this.uploadClient.send(UploadTopics.IMPORT_RELEASE, importDto)
+        );
+      });
     } catch (error) {
       this.logger.error(`Failed to trigger release import: ${error.message}`);
       throw new Error(`Failed to trigger release import: ${error.message}`);
     }
+  }
+
+  /**
+   * Get or create a project token for system operations
+   */
+  private async getOrCreateProjectToken(projectId: number): Promise<string> {
+    // Get project details for token payload
+    const project = await this.projectRepo.findOne({
+      where: { id: projectId },
+      select: { id: true, name: true },
+    });
+
+    if (!project) {
+      throw new NotFoundException(`Project ${projectId} not found`);
+    }
+
+    // Look for an existing active token that doesn't expire
+    let tokenEntity = await this.tokenRepo.findOne({
+      where: {
+        project: { id: projectId },
+        isActive: true,
+        neverExpires: true,
+        name: 'git-sync-system',
+      },
+      order: { createdDate: 'DESC' },
+    });
+
+    // If no permanent token exists, create one for git-sync
+    if (!tokenEntity) {
+      this.logger.log(`Creating git-sync token for project ${projectId}`);
+      const jwtToken = this.generateToken(projectId, project.name, 'git-sync-system', true);
+      
+      const newToken = this.tokenRepo.create({
+        project: { id: projectId } as ProjectEntity,
+        name: 'git-sync-system',
+        token: jwtToken,
+        neverExpires: true,
+        isActive: true,
+      });
+      tokenEntity = await this.tokenRepo.save(newToken);
+    }
+
+    return tokenEntity.token;
+  }
+
+  /**
+   * Generate a JWT token for project access
+   */
+  private generateToken(projectId: number, projectName: string, name: string, neverExpires: boolean, expirationDate?: Date): string {
+    this.logger.debug(`Generating JWT token for project ${projectId}`);
+    const payload = { projectId, projectName, name, neverExpires };
+    const expiresIn = neverExpires
+      ? '100y'
+      : expirationDate
+        ? Math.floor((expirationDate.getTime() - Date.now()) / 1000)
+        : '1y';
+
+    return this.jwtService.sign({ data: payload }, { expiresIn });
   }
 
   /**
