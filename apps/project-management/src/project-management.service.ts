@@ -34,6 +34,8 @@ import { MicroserviceClient, MicroserviceName } from '@app/common/microservice-c
 import { UploadTopics } from '@app/common/microservice-client/topics';
 import { ReleaseParams } from '@app/common/dto/upload';
 import { lastValueFrom } from 'rxjs';
+import { randomBytes } from 'crypto';
+import { GitSyncService } from './git-sync.service';
 
 
 @Injectable()
@@ -54,6 +56,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     @InjectRepository(LabelEntity) private readonly labelRepo: Repository<LabelEntity>,
     @Inject("OidcProviderService") private readonly oidcService: OidcService,
     @Inject(MicroserviceName.UPLOAD_SERVICE) private readonly uploadClient: MicroserviceClient,
+    @Inject(GitSyncService) private readonly gitSyncService: GitSyncService,
   ) { }
   async getUsers(params: UserSearchDto) {
     return await this.oidcService.getUsers(params)
@@ -274,6 +277,15 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       project.label = label;
     }
 
+    // Generate webhook URL if git integration is configured
+    if (projectDto.gitCloneUrl) {
+      const webhookToken = this.generateWebhookToken();
+      project.gitCloneUrl = projectDto.gitCloneUrl;
+      project.gitSshKey = projectDto.gitSshKey;
+      project.gitCloneInterval = projectDto.gitCloneInterval ?? 60; // Default 60 minutes
+      project.gitWebhookUrl = this.generateWebhookUrl(webhookToken);
+    }
+
     try {
       project = await this.projectRepo.save(project);
     } catch (error) {
@@ -325,6 +337,26 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       } else {
         project.label = await this.getOrCreateLabel(dto.label);
       }
+    }
+
+    // Handle git integration updates
+    if (dto.gitCloneUrl !== undefined) {
+      project.gitCloneUrl = dto.gitCloneUrl;
+      project.gitSshKey = dto.gitSshKey;
+      project.gitCloneInterval = dto.gitCloneInterval ?? project.gitCloneInterval ?? 60;
+      
+      // Generate new webhook URL if setting up git for first time
+      // Keep existing webhook URL if it already exists (don't regenerate)
+      if (dto.gitCloneUrl && !project.gitWebhookUrl) {
+        const webhookToken = this.generateWebhookToken();
+        project.gitWebhookUrl = this.generateWebhookUrl(webhookToken);
+      } else if (!dto.gitCloneUrl) {
+        // Clear git settings if gitCloneUrl is set to null/empty
+        project.gitWebhookUrl = undefined;
+        project.gitSshKey = undefined;
+        project.gitCloneInterval = undefined;
+      }
+      // Note: Both webhook and interval can coexist - no need to choose one or the other
     }
 
     try {
@@ -948,6 +980,53 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
         `Failed to delete label '${label.name}' due to an unexpected error`
       );
     }
+  }
+
+  /**
+   * Generate a secure random token for webhook URLs
+   */
+  private generateWebhookToken(): string {
+    return randomBytes(32).toString('hex');
+  }
+
+  /**
+   * Generate webhook URL using the webhook token
+   * Format: /api/projects/git-webhook/{token}
+   */
+  private generateWebhookUrl(token: string): string {
+    const baseUrl = process.env.API_BASE_URL || 'http://localhost:3000';
+    return `${baseUrl}/api/projects/git-webhook/${token}`;
+  }
+
+  /**
+   * Trigger git sync based on webhook token
+   * This is called when a webhook is received from GitHub/GitLab
+   */
+  async triggerGitSyncByWebhook(webhookToken: string): Promise<any> {
+    this.logger.log( `Triggering git sync by webhook token: ${webhookToken.substring(0, 8)}...`);
+
+    // Extract token from URL if needed
+    const token = webhookToken.split('/').pop() || webhookToken;
+
+    // Find project by webhook URL
+    const project = await this.projectRepo.findOne({
+      where: {
+        gitWebhookUrl: ILike(`%${token}%`)
+      }
+    });
+
+    if (!project) {
+      this.logger.warn(`No project found for webhook token: ${token.substring(0, 8)}...`);
+      throw new NotFoundException('Invalid webhook token');
+    }
+
+    this.logger.log(`Found project ${project.id} for webhook, triggering git sync`);
+
+    // Trigger the git sync using the GitSyncService
+    return this.gitSyncService.syncRepository({
+      projectIdentifier: project.id,
+      projectId: project.id,
+    });
   }
 
   async onModuleInit() {

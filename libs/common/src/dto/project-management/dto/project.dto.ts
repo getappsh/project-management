@@ -181,16 +181,18 @@ export class DetailedProjectDto extends ProjectDto {
   @ApiProperty({ required: false, type: MemberResDto, isArray: true })
   members?: MemberResDto[]
 
-
   @ApiProperty({ required: false, type: ProjectTokenDto, isArray: true })
   tokens?: ProjectTokenDto[]
 
+  @ApiProperty({ required: false, description: 'Generated webhook URL for git integration' })
+  gitWebhookUrl?: string;
 
   fromProjectEntity(project: ProjectEntity) {
     super.fromProjectEntity(project);
     this.createdAt = project.createdDate;
     this.members = project.memberProject?.map(memberProject => new MemberResDto().fromMemberProjectEntity(memberProject));
-    this.tokens = project.tokens?.map(token => ProjectTokenDto.fromProjectTokenEntity(token))
+    this.tokens = project.tokens?.map(token => ProjectTokenDto.fromProjectTokenEntity(token));
+    this.gitWebhookUrl = project.gitWebhookUrl;
 
     return this;
   }
@@ -245,6 +247,20 @@ export class CreateProjectDto {
   @IsOptional()
   @ApiProperty({ required: false, description: 'Label name to assign to the project' })
   label?: string;
+
+  @IsString()
+  @IsOptional()
+  @ApiProperty({ required: false, description: 'Git repository clone URL (HTTPS or SSH)' })
+  gitCloneUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  @ApiProperty({ required: false, description: 'SSH private key for git authentication (base64 encoded)' })
+  gitSshKey?: string;
+
+  @IsOptional()
+  @ApiProperty({ required: false, description: 'Interval in minutes for periodic git clone (default: 60 if git configured)', type: Number })
+  gitCloneInterval?: number;
 
   username: string;
 }
