@@ -246,6 +246,20 @@ export class CreateProjectDto {
   @ApiProperty({ required: false, description: 'Label name to assign to the project' })
   label?: string;
 
+  @IsString()
+  @IsOptional()
+  @ApiProperty({ required: false, description: 'Git repository clone URL (HTTPS or SSH)' })
+  gitCloneUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  @ApiProperty({ required: false, description: 'SSH private key for git authentication (base64 encoded)' })
+  gitSshKey?: string;
+
+  @IsOptional()
+  @ApiProperty({ required: false, description: 'Interval in minutes for periodic git clone (default: 60 if git configured)', type: Number })
+  gitCloneInterval?: number;
+
   username: string;
 }
 
