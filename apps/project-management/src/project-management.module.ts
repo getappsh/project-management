@@ -12,8 +12,10 @@ import { OidcModule } from '@app/common/oidc/oidc.module';
 import { SeederService } from './utils/seeder.service';
 import { RegulationService } from './regulation.service';
 import { GitSyncService } from './git-sync.service';
+import { GitSyncScheduler } from './git-sync-scheduler.service';
 import { PROJECT_ACCESS_SERVICE } from '@app/common/utils/project-access';
 import { MicroserviceModule, MicroserviceName, MicroserviceType } from '@app/common/microservice-client';
+import { SafeCronModule } from '@app/common/safe-cron';
 
 @Module({
   imports: [
@@ -35,12 +37,14 @@ import { MicroserviceModule, MicroserviceName, MicroserviceType } from '@app/com
       type: MicroserviceType.UPLOAD,
       id: "project-management"
     }),
+    SafeCronModule,
   ],
   controllers: [ProjectManagementController],
   providers: [
     ProjectManagementService, 
     RegulationService,
     GitSyncService,
+    GitSyncScheduler,
     SeederService,
     {
       provide: PROJECT_ACCESS_SERVICE,

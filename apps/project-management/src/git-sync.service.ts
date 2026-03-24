@@ -263,11 +263,33 @@ export class GitSyncService {
 
   /**
    * Read and parse .getapp file from repository
+   * Searches for files with .getapp extension (e.g., .getapp, project.getapp, config.getapp)
    */
   private async readGetappFile(repoDir: string): Promise<GetappFileConfig | null> {
-    const getappPath = path.join(repoDir, '.getapp');
-
     try {
+      // First try the exact .getapp file for backward compatibility
+      let getappPath = path.join(repoDir, '.getapp');
+      let fileExists = await fs.promises.access(getappPath).then(() => true).catch(() => false);
+      
+      // If .getapp doesn't exist, search for any file with .getapp extension
+      if (!fileExists) {
+        this.logger.debug(`File .getapp not found, searching for *.getapp files in ${repoDir}`);
+        const files = await fs.promises.readdir(repoDir);
+        const getappFiles = files.filter(file => file.endsWith('.getapp'));
+        
+        if (getappFiles.length === 0) {
+          this.logger.warn(`No .getapp files found in repository`);
+          return null;
+        }
+        
+        if (getappFiles.length > 1) {
+          this.logger.warn(`Multiple .getapp files found: ${getappFiles.join(', ')}. Using first: ${getappFiles[0]}`);
+        }
+        
+        getappPath = path.join(repoDir, getappFiles[0]);
+        this.logger.log(`Found .getapp file: ${getappFiles[0]}`);
+      }
+
       const fileContent = await fs.promises.readFile(getappPath, 'utf-8');
       
       // Try parsing as JSON first, then YAML-like structure

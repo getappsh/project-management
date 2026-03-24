@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
 import { GitSyncService } from './git-sync.service';
 import { ProjectEntity } from '@app/common/database/entities';
+import { TimeoutRepeatTask } from '@app/common/safe-cron/timeout-repeated-task.decorator';
 
 @Injectable()
 export class GitSyncScheduler {
@@ -10,10 +10,16 @@ export class GitSyncScheduler {
   constructor(private readonly gitSyncService: GitSyncService) {}
 
   /**
-   * Run every 5 minutes to check for projects that need periodic syncing
+   * Run periodic git sync check on startup and repeat every 5 minutes
+   * Uses distributed locking to handle multiple project-management instances
    * Note: This works alongside webhooks - projects can have both enabled
    */
-  @Cron(CronExpression.EVERY_5_MINUTES)
+  @TimeoutRepeatTask({ 
+    name: "periodic-git-sync", 
+    initialTimeout: 5000, // Start 5 seconds after microservice starts
+    repeatTimeout: 5 * 60 * 1000, // Repeat every 5 minutes
+    acquireFailTimeout: 2 * 60 * 1000 // Retry after 2 minutes if lock not acquired
+  })
   async handlePeriodicSync() {
     this.logger.debug('Running periodic git sync check...');
 
