@@ -52,7 +52,7 @@ export class ProjectEntity extends BaseEntity {
     @OneToMany(() => DocEntity, (doc) => doc.project, { lazy: true })
     docs: Promise<DocEntity[]>;
 
-    @Column({ name: "project_type", type: "enum", enum: ProjectType, default: ProjectType.PRODUCT })
+    @Column({ name: "project_type", type: "enum", enum: ProjectType, default: ProjectType.APPLICATION })
     projectType: ProjectType;
 
     @ManyToMany(() => DeviceTypeEntity, deviceType => deviceType.projects)
