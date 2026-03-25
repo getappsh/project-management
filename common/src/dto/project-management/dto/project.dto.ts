@@ -275,6 +275,7 @@ export class CreateProjectDto {
   gitCloneInterval?: number;
 
   username: string;
+  apiBaseUrl?: string;
 }
 
 export class EditProjectDto extends PartialType(OmitType(CreateProjectDto, ['projectType'] as const)) {
