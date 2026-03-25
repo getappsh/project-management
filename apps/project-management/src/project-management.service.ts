@@ -283,7 +283,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       project.gitCloneUrl = projectDto.gitCloneUrl;
       project.gitSshKey = projectDto.gitSshKey;
       project.gitCloneInterval = projectDto.gitCloneInterval ?? 60; // Default 60 minutes
-      project.gitWebhookUrl = this.generateWebhookUrl(webhookToken);
+      project.gitWebhookUrl = this.generateWebhookUrl(webhookToken, projectDto.apiBaseUrl);
     }
 
     try {
@@ -349,7 +349,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       // Keep existing webhook URL if it already exists (don't regenerate)
       if (dto.gitCloneUrl && !project.gitWebhookUrl) {
         const webhookToken = this.generateWebhookToken();
-        project.gitWebhookUrl = this.generateWebhookUrl(webhookToken);
+        project.gitWebhookUrl = this.generateWebhookUrl(webhookToken, dto.apiBaseUrl);
       } else if (!dto.gitCloneUrl) {
         // Clear git settings if gitCloneUrl is set to null/empty
         project.gitWebhookUrl = undefined;
@@ -993,8 +993,8 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
    * Generate webhook URL using the webhook token
    * Format: /api/projects/git-webhook/{token}
    */
-  private generateWebhookUrl(token: string): string {
-    const baseUrl = process.env.API_BASE_URL || 'http://localhost:3000';
+  private generateWebhookUrl(token: string, apiBaseUrl?: string): string {
+    const baseUrl = process.env.API_BASE_URL || apiBaseUrl || 'http://localhost:3000';
     return `${baseUrl}/api/projects/git-webhook/${token}`;
   }
 
