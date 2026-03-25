@@ -62,6 +62,18 @@ export class ProjectEntity extends BaseEntity {
     @JoinColumn({ name: "label_id" })
     label: LabelEntity | null;
 
+    @Column({ name: "git_clone_url", nullable: true })
+    gitCloneUrl?: string;
+
+    @Column({ name: "git_ssh_key", nullable: true, type: "text" })
+    gitSshKey?: string;
+
+    @Column({ name: "git_webhook_url", nullable: true })
+    gitWebhookUrl?: string;
+
+    @Column({ name: "git_clone_interval", nullable: true, type: "integer" })
+    gitCloneInterval?: number;
+
     toString() {
         return JSON.stringify(this)
     }
