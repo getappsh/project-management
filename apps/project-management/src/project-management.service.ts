@@ -262,7 +262,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     project.name = projectDto.name;
     project.projectName = projectDto.projectName;
     project.description = projectDto.description;
-    project.projectType = projectDto.projectType ?? ProjectType.PRODUCT;
+    project.projectType = projectDto.projectType ?? ProjectType.APPLICATION;
 
     this.enforceProjectRestrictions({ projectType: project.projectType, platforms: projectDto.platforms });
 
