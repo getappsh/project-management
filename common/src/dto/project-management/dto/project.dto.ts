@@ -181,16 +181,30 @@ export class DetailedProjectDto extends ProjectDto {
   @ApiProperty({ required: false, type: MemberResDto, isArray: true })
   members?: MemberResDto[]
 
-
   @ApiProperty({ required: false, type: ProjectTokenDto, isArray: true })
   tokens?: ProjectTokenDto[]
 
+  @ApiProperty({ required: false, description: 'Generated webhook URL for git integration' })
+  gitWebhookUrl?: string;
+
+  @ApiProperty({ required: false, description: 'Git repository clone URL (HTTPS or SSH)' })
+  gitCloneUrl?: string;
+
+  @ApiProperty({ required: false, description: 'Whether an SSH private key is configured for git authentication', type: Boolean })
+  gitSshKeyConfigured?: boolean;
+
+  @ApiProperty({ required: false, description: 'Interval in minutes for periodic git clone', type: Number })
+  gitCloneInterval?: number;
 
   fromProjectEntity(project: ProjectEntity) {
     super.fromProjectEntity(project);
     this.createdAt = project.createdDate;
     this.members = project.memberProject?.map(memberProject => new MemberResDto().fromMemberProjectEntity(memberProject));
-    this.tokens = project.tokens?.map(token => ProjectTokenDto.fromProjectTokenEntity(token))
+    this.tokens = project.tokens?.map(token => ProjectTokenDto.fromProjectTokenEntity(token));
+    this.gitWebhookUrl = project.gitWebhookUrl;
+    this.gitCloneUrl = project.gitCloneUrl;
+    this.gitSshKeyConfigured = !!project.gitSshKey;
+    this.gitCloneInterval = project.gitCloneInterval;
 
     return this;
   }
