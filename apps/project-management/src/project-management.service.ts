@@ -370,10 +370,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     }
   }
 
-  private enforceProjectRestrictions(project: { projectType: ProjectType, platforms?: string[] }) {
-    if (project.projectType === ProjectType.FORMATION && (project.platforms?.length ?? 0) > 1) {
-      throw new BadRequestException('Formation projects can only have one platform');
-    }
+  private enforceProjectRestrictions(_project: { projectType: ProjectType, platforms?: string[] }) {
   }
 
   async deleteProject(params: ProjectIdentifierParams): Promise<string> {
