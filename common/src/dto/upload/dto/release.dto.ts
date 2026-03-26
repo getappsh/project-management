@@ -328,11 +328,8 @@ export class ComponentV2Dto {
     dto.createdAt = release.createdAt;
     dto.updatedAt = release.updatedAt;
     dto.projectName = release.project.name;
-    const agentUnsupportedTypes = [ProjectType.APPLICATION, ProjectType.LIB, ProjectType.BUNDLE, ProjectType.INFRA];
     dto.typeV2 = release.project.projectType;
-    dto.type = agentUnsupportedTypes.includes(release.project.projectType)
-      ? ProjectType.PRODUCT
-      : release.project.projectType;
+    dto.type = ProjectType.PRODUCT;
     dto.latest = release.latest;
     dto.releasedAt = release.releasedAt ?? undefined;
     dto.size = release?.artifacts
