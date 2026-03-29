@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { RuleEntity } from '../../database/entities/rule.entity';
@@ -13,6 +13,7 @@ import { CreateRuleDto, CreatePolicyDto, CreateRestrictionDto, UpdateRuleDto } f
 import { RuleValidationService } from './rule-validation.service';
 import { RuleType } from '../enums/rule.enums';
 import { RuleDefinition } from '../types/rule.types';
+import { DEFAULT_ALLOW_ALL_DEVICES_RULE_ID, DEFAULT_ALLOW_ALL_DEVICES_RULE_NAME, DEFAULT_ALLOW_ALL_DEVICES_RULE } from '../constants';
 
 interface RuleQueryFilter {
   type?: RuleType;
@@ -26,7 +27,7 @@ interface RuleQueryFilter {
 }
 
 @Injectable()
-export class RuleService {
+export class RuleService implements OnModuleInit {
   private readonly logger = new Logger(RuleService.name);
   constructor(
     @InjectRepository(RuleEntity)
@@ -47,6 +48,25 @@ export class RuleService {
     private readonly deviceRepository: Repository<DeviceEntity>,
     private readonly ruleValidationService: RuleValidationService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.ruleRepository.createQueryBuilder()
+      .insert()
+      .into(RuleEntity)
+      .values({
+        id: DEFAULT_ALLOW_ALL_DEVICES_RULE_ID,
+        name: DEFAULT_ALLOW_ALL_DEVICES_RULE_NAME,
+        description: 'Default policy that allows all devices to download a component. This rule is automatically applied to all existing and new releases unless manually removed.',
+        type: RuleType.POLICY,
+        version: 1,
+        isActive: true,
+        rule: DEFAULT_ALLOW_ALL_DEVICES_RULE,
+      })
+      .orUpdate(['rule'], ['id'])
+      .execute();
+
+    this.logger.log('Default "Allow All Devices" rule seeded');
+  }
 
   /**
    * Creates a new rule with its associations
