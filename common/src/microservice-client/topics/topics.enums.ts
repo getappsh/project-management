@@ -36,6 +36,7 @@ export const UploadTopics = {
     GET_POLICIES_FOR_RELEASE: `getapp-upload.get-policies-for-release${region}`,
     CREATE_POLICY: `getapp-upload.create-policy${region}`,
     GET_POLICY: `getapp-upload.get-policy${region}`,
+    GET_POLICY_INTERNAL: `getapp-upload.get-policy-internal${region}`,
     UPDATE_POLICY: `getapp-upload.update-policy${region}`,
     DELETE_POLICY: `getapp-upload.delete-policy${region}`,
     GET_RULE_FIELDS: `getapp-upload.get-rule-fields${region}`,
@@ -231,6 +232,8 @@ export const DeviceTopics = {
     GET_RULE_FIELDS: `getapp-device.get-rule-fields${region}`,
     ADD_RULE_FIELD: `getapp-device.add-rule-field${region}`,
     REMOVE_RULE_FIELD: `getapp-device.remove-rule-field${region}`,
+    EVALUATE_RESTRICTION: `getapp-device.evaluate-restriction${region}`,
+    GET_DEVICE_CONTEXT: `getapp-device.get-device-context${region}`,
     
     DISCOVER_DEVICE_CONTEXT_V2: `getapp-device.discover.device-context-V2${region}`,
     CHECK_HEALTH: `getapp-device.check-health${region}`, 
