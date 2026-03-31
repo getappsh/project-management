@@ -100,6 +100,7 @@ export class RuleService implements OnModuleInit {
       type: createRuleDto.type,
       rule: createRuleDto.rule,
       isActive: createRuleDto.isActive ?? true,
+      isPush: createRuleDto.isPush ?? false,
       version: 1,
     });
 
@@ -128,6 +129,7 @@ export class RuleService implements OnModuleInit {
     if (updateRuleDto.name !== undefined) rule.name = updateRuleDto.name;
     if (updateRuleDto.description !== undefined) rule.description = updateRuleDto.description;
     if (updateRuleDto.isActive !== undefined) rule.isActive = updateRuleDto.isActive;
+    if (updateRuleDto.isPush !== undefined) rule.isPush = updateRuleDto.isPush;
     if (updateRuleDto.rule !== undefined) rule.rule = updateRuleDto.rule;
 
     await this.ruleRepository.save(rule);
@@ -234,6 +236,7 @@ export class RuleService implements OnModuleInit {
       type: rule.type,
       version: rule.version,
       isActive: rule.isActive,
+      isPush: rule.isPush ?? false,
       rule: rule.rule,
       createdAt: rule.createdAt.toISOString(),
       updatedAt: rule.updatedAt.toISOString(),
