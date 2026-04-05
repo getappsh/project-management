@@ -91,7 +91,7 @@ export class GitSyncService {
         await this.cloneRepository(project, repoDir, sshDir);
 
         // Read .getapp file
-        const getappConfig = await this.readGetappFile(repoDir);
+        const getappConfig = await this.readGetappFile(repoDir, project.gitGetappFilePath);
 
         if (!getappConfig) {
           result.status = GitSyncStatus.FAILED;
@@ -213,10 +213,26 @@ export class GitSyncService {
       sshKeyPath = await this.setupSshKey(project.gitSshKey, sshDir);
     }
 
-    this.logger.debug(`Cloning repository: ${gitCloneUrl} to ${repoDir}`);
+    // Build the effective clone URL (embed HTTPS credentials when provided)
+    let effectiveCloneUrl = gitCloneUrl!;
+    if (project.gitHttpsUsername && project.gitHttpsPassword) {
+      try {
+        const parsed = new URL(gitCloneUrl!);
+        parsed.username = encodeURIComponent(project.gitHttpsUsername);
+        parsed.password = encodeURIComponent(project.gitHttpsPassword);
+        effectiveCloneUrl = parsed.toString();
+      } catch {
+        throw new Error(`Invalid git clone URL: ${gitCloneUrl}`);
+      }
+    }
+
+    // Build branch flag when a specific branch is configured
+    const branchFlag = project.gitBranch ? `--branch "${project.gitBranch}"` : '';
+
+    this.logger.debug(`Cloning repository: ${gitCloneUrl} to ${repoDir}${project.gitBranch ? ` (branch: ${project.gitBranch})` : ''}`);
 
     try {
-      const cmd = `git clone --depth 1 "${gitCloneUrl}" "${repoDir}"`;
+      const cmd = `git clone --depth 1 ${branchFlag} "${effectiveCloneUrl}" "${repoDir}"`;
       
       // Build environment with isolated SSH configuration
       const env: NodeJS.ProcessEnv = { ...process.env };
@@ -232,6 +248,9 @@ export class GitSyncService {
         // Ensure HOME doesn't interfere with SSH config
         env.HOME = sshDir;
       }
+
+      // Prevent interactive prompts (important for HTTPS auth failures)
+      env.GIT_TERMINAL_PROMPT = '0';
 
       const { stdout, stderr } = await execAsync(cmd, { env });
 
@@ -273,11 +292,28 @@ export class GitSyncService {
 
   /**
    * Read and parse .getapp file from repository
-   * Searches for files with .getapp extension (e.g., .getapp, project.getapp, config.getapp)
+   * If project.gitGetappFilePath is set, reads that specific path.
+   * Otherwise searches for files with .getapp extension (e.g., .getapp, project.getapp, config.getapp)
    * The file should be JSON format matching ImportReleaseDto structure
    */
-  private async readGetappFile(repoDir: string): Promise<ImportReleaseDto | null> {
+  private async readGetappFile(repoDir: string, getappFilePath?: string): Promise<ImportReleaseDto | null> {
     try {
+      // If a custom path is configured, use it directly
+      if (getappFilePath) {
+        const customPath = path.join(repoDir, getappFilePath);
+        const fileExists = await fs.promises.access(customPath).then(() => true).catch(() => false);
+        if (!fileExists) {
+          this.logger.warn(`Configured .getapp file path not found: ${getappFilePath}`);
+          return null;
+        }
+        this.logger.log(`Reading .getapp file from configured path: ${getappFilePath}`);
+        const fileContent = await fs.promises.readFile(customPath, 'utf-8');
+        const config = JSON.parse(fileContent) as ImportReleaseDto;
+        this.validateGetappConfig(config);
+        this.logger.log(`Parsed .getapp file with version ${config.version}, ${config.artifacts?.length || 0} artifacts, ${config.dockerImages?.length || 0} docker images`);
+        return config;
+      }
+
       // First try the exact .getapp file for backward compatibility
       let getappPath = path.join(repoDir, '.getapp');
       let fileExists = await fs.promises.access(getappPath).then(() => true).catch(() => false);

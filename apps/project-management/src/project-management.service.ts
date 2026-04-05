@@ -283,6 +283,10 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       project.gitCloneUrl = projectDto.gitCloneUrl;
       project.gitSshKey = projectDto.gitSshKey;
       project.gitCloneInterval = projectDto.gitCloneInterval ?? 60; // Default 60 minutes
+      project.gitBranch = projectDto.gitBranch;
+      project.gitHttpsUsername = projectDto.gitHttpsUsername;
+      project.gitHttpsPassword = projectDto.gitHttpsPassword;
+      project.gitGetappFilePath = projectDto.gitGetappFilePath;
       project.gitWebhookUrl = this.generateWebhookUrl(webhookToken, projectDto.apiBaseUrl);
     }
 
@@ -343,8 +347,12 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     if (dto.gitCloneUrl !== undefined) {
       project.gitCloneUrl = dto.gitCloneUrl;
       project.gitSshKey = dto.gitSshKey;
-      project.gitCloneInterval = dto.gitCloneInterval ?? project.gitCloneInterval ?? 60;
-      
+      project.gitCloneInterval = dto.gitCloneInterval !== undefined ? dto.gitCloneInterval : (project.gitCloneInterval ?? 60);
+      project.gitBranch = dto.gitBranch !== undefined ? dto.gitBranch : project.gitBranch;
+      project.gitHttpsUsername = dto.gitHttpsUsername !== undefined ? dto.gitHttpsUsername : project.gitHttpsUsername;
+      project.gitHttpsPassword = dto.gitHttpsPassword !== undefined ? dto.gitHttpsPassword : project.gitHttpsPassword;
+      project.gitGetappFilePath = dto.gitGetappFilePath !== undefined ? dto.gitGetappFilePath : project.gitGetappFilePath;
+
       // Generate new webhook URL if setting up git for first time
       // Keep existing webhook URL if it already exists (don't regenerate)
       if (dto.gitCloneUrl && !project.gitWebhookUrl) {
@@ -355,6 +363,10 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
         project.gitWebhookUrl = undefined;
         project.gitSshKey = undefined;
         project.gitCloneInterval = undefined;
+        project.gitBranch = undefined;
+        project.gitHttpsUsername = undefined;
+        project.gitHttpsPassword = undefined;
+        project.gitGetappFilePath = undefined;
       }
       // Note: Both webhook and interval can coexist - no need to choose one or the other
     }

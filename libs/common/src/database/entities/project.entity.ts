@@ -74,6 +74,18 @@ export class ProjectEntity extends BaseEntity {
     @Column({ name: "git_clone_interval", nullable: true, type: "integer" })
     gitCloneInterval?: number;
 
+    @Column({ name: "git_branch", nullable: true })
+    gitBranch?: string;
+
+    @Column({ name: "git_https_username", nullable: true })
+    gitHttpsUsername?: string;
+
+    @Column({ name: "git_https_password", nullable: true, type: "text" })
+    gitHttpsPassword?: string;
+
+    @Column({ name: "git_getapp_file_path", nullable: true })
+    gitGetappFilePath?: string;
+
     toString() {
         return JSON.stringify(this)
     }
