@@ -52,7 +52,7 @@ export class ProjectEntity extends BaseEntity {
     @OneToMany(() => DocEntity, (doc) => doc.project, { lazy: true })
     docs: Promise<DocEntity[]>;
 
-    @Column({ name: "project_type", type: "enum", enum: ProjectType, default: ProjectType.PRODUCT })
+    @Column({ name: "project_type", type: "enum", enum: ProjectType, default: ProjectType.APPLICATION })
     projectType: ProjectType;
 
     @ManyToMany(() => DeviceTypeEntity, deviceType => deviceType.projects)
@@ -61,6 +61,30 @@ export class ProjectEntity extends BaseEntity {
     @ManyToOne(() => LabelEntity, label => label.projects, { nullable: true })
     @JoinColumn({ name: "label_id" })
     label: LabelEntity | null;
+
+    @Column({ name: "git_clone_url", nullable: true, type: 'varchar' })
+    gitCloneUrl?: string | null;
+
+    @Column({ name: "git_ssh_key", nullable: true, type: "text" })
+    gitSshKey?: string | null;
+
+    @Column({ name: "git_webhook_url", nullable: true })
+    gitWebhookUrl?: string;
+
+    @Column({ name: "git_clone_interval", nullable: true, type: "integer" })
+    gitCloneInterval?: number;
+
+    @Column({ name: "git_branch", nullable: true })
+    gitBranch?: string;
+
+    @Column({ name: "git_https_username", nullable: true, type: 'varchar' })
+    gitHttpsUsername?: string | null;
+
+    @Column({ name: "git_https_password", nullable: true, type: "text" })
+    gitHttpsPassword?: string | null;
+
+    @Column({ name: "git_getapp_file_path", nullable: true })
+    gitGetappFilePath?: string;
 
     toString() {
         return JSON.stringify(this)

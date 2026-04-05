@@ -2,6 +2,7 @@
 
 FROM node:19.5.0-alpine
 USER root
+RUN apk add --no-cache git
 WORKDIR /node-app
 COPY package.json package.json
 RUN npm i
