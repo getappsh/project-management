@@ -196,6 +196,15 @@ export class DetailedProjectDto extends ProjectDto {
   @ApiProperty({ required: false, description: 'Interval in minutes for periodic git clone', type: Number })
   gitCloneInterval?: number;
 
+  @ApiProperty({ required: false, description: 'Branch to clone (defaults to repository default branch)' })
+  gitBranch?: string;
+
+  @ApiProperty({ required: false, description: 'Whether HTTPS username/password credentials are configured', type: Boolean })
+  gitHttpsCredentialsConfigured?: boolean;
+
+  @ApiProperty({ required: false, description: 'Path to the .getapp file within the repository (defaults to repo root)' })
+  gitGetappFilePath?: string;
+
   fromProjectEntity(project: ProjectEntity) {
     super.fromProjectEntity(project);
     this.createdAt = project.createdDate;
@@ -205,6 +214,9 @@ export class DetailedProjectDto extends ProjectDto {
     this.gitCloneUrl = project.gitCloneUrl;
     this.gitSshKeyConfigured = !!project.gitSshKey;
     this.gitCloneInterval = project.gitCloneInterval;
+    this.gitBranch = project.gitBranch;
+    this.gitHttpsCredentialsConfigured = !!(project.gitHttpsUsername && project.gitHttpsPassword);
+    this.gitGetappFilePath = project.gitGetappFilePath;
 
     return this;
   }
@@ -262,17 +274,44 @@ export class CreateProjectDto {
 
   @IsString()
   @IsOptional()
+  @Transform(({ value }) => value === '' ? null : value)
   @ApiProperty({ required: false, description: 'Git repository clone URL (HTTPS or SSH)' })
   gitCloneUrl?: string;
 
   @IsString()
   @IsOptional()
+  @Transform(({ value }) => value === '' ? null : value)
   @ApiProperty({ required: false, description: 'SSH private key for git authentication (base64 encoded)' })
   gitSshKey?: string;
 
   @IsOptional()
+  @Transform(({ value }) => value === '' ? null : value)
   @ApiProperty({ required: false, description: 'Interval in minutes for periodic git clone (default: 60 if git configured)', type: Number })
   gitCloneInterval?: number;
+
+  @IsString()
+  @IsOptional()
+  @Transform(({ value }) => value === '' ? null : value)
+  @ApiProperty({ required: false, description: 'Branch to clone (defaults to repository default branch)' })
+  gitBranch?: string;
+
+  @IsString()
+  @IsOptional()
+  @Transform(({ value }) => value === '' ? null : value)
+  @ApiProperty({ required: false, description: 'Username for HTTPS git authentication' })
+  gitHttpsUsername?: string;
+
+  @IsString()
+  @IsOptional()
+  @Transform(({ value }) => value === '' ? null : value)
+  @ApiProperty({ required: false, description: 'Password or personal access token for HTTPS git authentication' })
+  gitHttpsPassword?: string;
+
+  @IsString()
+  @IsOptional()
+  @Transform(({ value }) => value === '' ? null : value)
+  @ApiProperty({ required: false, description: 'Path to the .getapp file within the repository (defaults to repo root)' })
+  gitGetappFilePath?: string;
 
   username: string;
   apiBaseUrl?: string;
