@@ -100,10 +100,10 @@ export class ReleaseMetadata {
   @ApiProperty({ required: false, type: PostInstallAction, description: 'Post-installation action configuration' })
   postInstallAction?: PostInstallAction;
 
-  @ApiProperty({ required: false, type: 'integer', description: 'Installation size in bytes - disk space required after installation (user-specified)' })
+  @ApiProperty({ required: false, type: 'integer', format: 'int64', description: 'Installation size in bytes - disk space required after installation (user-specified)' })
   installationSize?: number;
 
-  @ApiProperty({ required: false, type: 'integer', description: 'Total size in bytes - automatically calculated as installationSize + artifactsSize' })
+  @ApiProperty({ required: false, type: 'integer', format: 'int64', description: 'Total size in bytes - automatically calculated as installationSize + artifactsSize' })
   totalSize?: number;
 
   //@ApiProperty({ required: false, description: 'Additional user-defined metadata properties (flexible structure)' })
@@ -214,7 +214,7 @@ export class ReleaseDto {
     dto.id = release.catalogId;
     dto.projectId = release?.project?.id;
     dto.projectName = release?.project?.name;
-    dto.name = release.name || "";
+    dto.name = release.name ?? "";
     dto.releaseNotes = release.releaseNotes ?? "";
     dto.metadata = release.metadata;
     dto.status = release.status;
@@ -228,7 +228,7 @@ export class ReleaseDto {
     dto.updatedBy = release.updatedBy ?? undefined;
     dto.isImported = release.isImported ?? false;
     // Readonly if it's imported AND released, but user doesn't have edit permission
-    dto.readonly = dto.isImported && release.status === ReleaseStatusEnum.RELEASED && !userCanEditImported;
+    dto.readonly = release.status === ReleaseStatusEnum.RELEASED && !userCanEditImported;
 
     return dto;
   }
@@ -281,6 +281,9 @@ export class ComponentV2Dto {
   @ApiProperty()
   version: string;
 
+  @ApiProperty({type: "integer"})
+  projectId: number;
+
   @ApiProperty()
   projectName: string;
 
@@ -314,9 +317,11 @@ export class ComponentV2Dto {
   @ApiProperty({ required: false })
   releasedAt?: Date
 
+  @ApiProperty({ required: false, type: ComponentV2Dto, isArray: true })
+  dependencies?: ComponentV2Dto[]
+  
   @ApiProperty({ required: false, type: [ReleasePolicyDto], description: 'Policies associated with this release' })
   policies?: ReleasePolicyDto[]
-
 
   static fromEntity(release: ReleaseEntity): ComponentV2Dto {
     const dto = new ComponentV2Dto();
@@ -330,12 +335,19 @@ export class ComponentV2Dto {
     dto.projectName = release.project.name;
     dto.typeV2 = release.project.projectType;
     dto.type = ProjectType.PRODUCT;
+    dto.projectId = release?.project?.id;
     dto.latest = release.latest;
     dto.releasedAt = release.releasedAt ?? undefined;
     dto.size = release?.artifacts
       ?.filter(a => a.isInstallationFile)
       ?.map(a => Number(a?.fileUpload?.size) || 0)
       ?.reduce((size, a) => size + a, 0);
+    
+    // Map dependencies recursively
+    if (release.dependencies && release.dependencies.length > 0) {
+      dto.dependencies = release.dependencies.map(dep => ComponentV2Dto.fromEntity(dep));
+    }
+    
     return dto;
   }
 
