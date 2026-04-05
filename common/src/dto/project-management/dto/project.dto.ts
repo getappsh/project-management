@@ -9,6 +9,12 @@ import { ProjectMemberPreferencesDto } from "./project-member.dto";
 import { ReleaseDto } from "../../upload";
 import { Transform } from "class-transformer";
 
+export enum GitAuthMethod {
+  SSH_KEY = 'ssh_key',
+  HTTPS_CREDENTIALS = 'https_credentials',
+  NONE = 'none',
+}
+
 
 export class BaseProjectDto {
 
@@ -202,6 +208,9 @@ export class DetailedProjectDto extends ProjectDto {
   @ApiProperty({ required: false, description: 'Whether HTTPS username/password credentials are configured', type: Boolean })
   gitHttpsCredentialsConfigured?: boolean;
 
+  @ApiProperty({ required: false, description: 'Git authentication method in use', enum: GitAuthMethod })
+  gitAuthMethod?: GitAuthMethod;
+
   @ApiProperty({ required: false, description: 'Path to the .getapp file within the repository (defaults to repo root)' })
   gitGetappFilePath?: string;
 
@@ -211,12 +220,17 @@ export class DetailedProjectDto extends ProjectDto {
     this.members = project.memberProject?.map(memberProject => new MemberResDto().fromMemberProjectEntity(memberProject));
     this.tokens = project.tokens?.map(token => ProjectTokenDto.fromProjectTokenEntity(token));
     this.gitWebhookUrl = project.gitWebhookUrl;
-    this.gitCloneUrl = project.gitCloneUrl;
+    this.gitCloneUrl = project.gitCloneUrl ?? undefined;
     this.gitSshKeyConfigured = !!project.gitSshKey;
     this.gitCloneInterval = project.gitCloneInterval;
     this.gitBranch = project.gitBranch;
     this.gitHttpsCredentialsConfigured = !!(project.gitHttpsUsername && project.gitHttpsPassword);
     this.gitGetappFilePath = project.gitGetappFilePath;
+    this.gitAuthMethod = project.gitSshKey
+      ? GitAuthMethod.SSH_KEY
+      : (project.gitHttpsUsername && project.gitHttpsPassword)
+        ? GitAuthMethod.HTTPS_CREDENTIALS
+        : GitAuthMethod.NONE;
 
     return this;
   }
