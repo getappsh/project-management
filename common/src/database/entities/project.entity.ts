@@ -62,11 +62,11 @@ export class ProjectEntity extends BaseEntity {
     @JoinColumn({ name: "label_id" })
     label: LabelEntity | null;
 
-    @Column({ name: "git_clone_url", nullable: true })
-    gitCloneUrl?: string;
+    @Column({ name: "git_clone_url", nullable: true, type: 'varchar' })
+    gitCloneUrl?: string | null;
 
     @Column({ name: "git_ssh_key", nullable: true, type: "text" })
-    gitSshKey?: string;
+    gitSshKey?: string | null;
 
     @Column({ name: "git_webhook_url", nullable: true })
     gitWebhookUrl?: string;
@@ -77,11 +77,11 @@ export class ProjectEntity extends BaseEntity {
     @Column({ name: "git_branch", nullable: true })
     gitBranch?: string;
 
-    @Column({ name: "git_https_username", nullable: true })
-    gitHttpsUsername?: string;
+    @Column({ name: "git_https_username", nullable: true, type: 'varchar' })
+    gitHttpsUsername?: string | null;
 
     @Column({ name: "git_https_password", nullable: true, type: "text" })
-    gitHttpsPassword?: string;
+    gitHttpsPassword?: string | null;
 
     @Column({ name: "git_getapp_file_path", nullable: true })
     gitGetappFilePath?: string;
