@@ -220,7 +220,7 @@ export class DetailedProjectDto extends ProjectDto {
     this.members = project.memberProject?.map(memberProject => new MemberResDto().fromMemberProjectEntity(memberProject));
     this.tokens = project.tokens?.map(token => ProjectTokenDto.fromProjectTokenEntity(token));
     this.gitWebhookUrl = project.gitWebhookUrl;
-    this.gitCloneUrl = project.gitCloneUrl;
+    this.gitCloneUrl = project.gitCloneUrl ?? undefined;
     this.gitSshKeyConfigured = !!project.gitSshKey;
     this.gitCloneInterval = project.gitCloneInterval;
     this.gitBranch = project.gitBranch;

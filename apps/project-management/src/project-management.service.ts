@@ -281,13 +281,21 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     if (projectDto.gitCloneUrl) {
       const webhookToken = this.generateWebhookToken();
       project.gitCloneUrl = projectDto.gitCloneUrl;
-      project.gitSshKey = projectDto.gitSshKey;
       project.gitCloneInterval = projectDto.gitCloneInterval ?? 60; // Default 60 minutes
       project.gitBranch = projectDto.gitBranch;
-      project.gitHttpsUsername = projectDto.gitHttpsUsername;
-      project.gitHttpsPassword = projectDto.gitHttpsPassword;
       project.gitGetappFilePath = projectDto.gitGetappFilePath;
       project.gitWebhookUrl = this.generateWebhookUrl(webhookToken, projectDto.apiBaseUrl);
+
+      // SSH key and HTTPS credentials are mutually exclusive
+      if (projectDto.gitSshKey) {
+        project.gitSshKey = projectDto.gitSshKey;
+        project.gitHttpsUsername = null;
+        project.gitHttpsPassword = null;
+      } else {
+        project.gitSshKey = null;
+        project.gitHttpsUsername = projectDto.gitHttpsUsername;
+        project.gitHttpsPassword = projectDto.gitHttpsPassword;
+      }
     }
 
     try {
@@ -346,12 +354,27 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     // Handle git integration updates
     if (dto.gitCloneUrl !== undefined) {
       project.gitCloneUrl = dto.gitCloneUrl;
-      project.gitSshKey = dto.gitSshKey;
       project.gitCloneInterval = dto.gitCloneInterval !== undefined ? dto.gitCloneInterval : (project.gitCloneInterval ?? 60);
       project.gitBranch = dto.gitBranch !== undefined ? dto.gitBranch : project.gitBranch;
-      project.gitHttpsUsername = dto.gitHttpsUsername !== undefined ? dto.gitHttpsUsername : project.gitHttpsUsername;
-      project.gitHttpsPassword = dto.gitHttpsPassword !== undefined ? dto.gitHttpsPassword : project.gitHttpsPassword;
       project.gitGetappFilePath = dto.gitGetappFilePath !== undefined ? dto.gitGetappFilePath : project.gitGetappFilePath;
+
+      // SSH key and HTTPS credentials are mutually exclusive — the one being explicitly set wins,
+      // and clears the other. If neither is provided in this update, keep existing values unchanged.
+      if (dto.gitSshKey !== undefined) {
+        if (dto.gitSshKey) {
+          project.gitSshKey = dto.gitSshKey;
+          project.gitHttpsUsername = null;
+          project.gitHttpsPassword = null;
+        } else {
+          project.gitSshKey = null;
+        }
+      } else if (dto.gitHttpsUsername !== undefined || dto.gitHttpsPassword !== undefined) {
+        project.gitHttpsUsername = dto.gitHttpsUsername !== undefined ? dto.gitHttpsUsername : project.gitHttpsUsername;
+        project.gitHttpsPassword = dto.gitHttpsPassword !== undefined ? dto.gitHttpsPassword : project.gitHttpsPassword;
+        if (project.gitHttpsUsername || project.gitHttpsPassword) {
+          project.gitSshKey = null;
+        }
+      }
 
       // Generate new webhook URL if setting up git for first time
       // Keep existing webhook URL if it already exists (don't regenerate)
@@ -359,7 +382,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
         const webhookToken = this.generateWebhookToken();
         project.gitWebhookUrl = this.generateWebhookUrl(webhookToken, dto.apiBaseUrl);
       } else if (!dto.gitCloneUrl) {
-        // Clear git settings if gitCloneUrl is set to null/empty
+        // Clear all git settings if gitCloneUrl is set to null/empty
         project.gitWebhookUrl = undefined;
         project.gitSshKey = undefined;
         project.gitCloneInterval = undefined;
@@ -368,7 +391,6 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
         project.gitHttpsPassword = undefined;
         project.gitGetappFilePath = undefined;
       }
-      // Note: Both webhook and interval can coexist - no need to choose one or the other
     }
 
     try {
