@@ -18,7 +18,7 @@ RUN echo "${username}:x:${uid}:"
 
 # ===   install ca sofeware === #
 # Install the ca-certificates package to manage certificates
-RUN apk --no-cache add ca-certificates bash curl
+RUN apk --no-cache add ca-certificates bash curl git
 # Create the CA certificates directory
 RUN mkdir -p /usr/local/share/ca-certificates/
 
