@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - git-ops
 ##
 jobs:
   calculate_new_tag:
