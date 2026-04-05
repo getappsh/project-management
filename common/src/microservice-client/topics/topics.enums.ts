@@ -36,6 +36,7 @@ export const UploadTopics = {
     GET_POLICIES_FOR_RELEASE: `getapp-upload.get-policies-for-release${region}`,
     CREATE_POLICY: `getapp-upload.create-policy${region}`,
     GET_POLICY: `getapp-upload.get-policy${region}`,
+    GET_POLICY_INTERNAL: `getapp-upload.get-policy-internal${region}`,
     UPDATE_POLICY: `getapp-upload.update-policy${region}`,
     DELETE_POLICY: `getapp-upload.delete-policy${region}`,
     GET_RULE_FIELDS: `getapp-upload.get-rule-fields${region}`,
@@ -46,6 +47,8 @@ export const UploadTopics = {
     IMPORT_RELEASE: `getapp-upload.import-release${region}`,
     // Deployment Report
     GET_DEPLOYMENT_REPORT: `getapp-upload.get-deployment-report${region}`,
+    // Settings
+    GET_SBOM_ENABLED: `getapp-upload.get-sbom-enabled${region}`,
 
 } as const
 
@@ -228,6 +231,8 @@ export const DeviceTopics = {
     GET_RULE_FIELDS: `getapp-device.get-rule-fields${region}`,
     ADD_RULE_FIELD: `getapp-device.add-rule-field${region}`,
     REMOVE_RULE_FIELD: `getapp-device.remove-rule-field${region}`,
+    EVALUATE_RESTRICTION: `getapp-device.evaluate-restriction${region}`,
+    GET_DEVICE_CONTEXT: `getapp-device.get-device-context${region}`,
     
     DISCOVER_DEVICE_CONTEXT_V2: `getapp-device.discover.device-context-V2${region}`,
     CHECK_HEALTH: `getapp-device.check-health${region}`, 
@@ -297,4 +302,20 @@ export const DevicesHierarchyTopics = {
 export const DeviceBugReportTopics = {
     NEW_BUG_REPORT: `getapp-device.bug-report.new${region}`,
     GET_BUG_REPORT: `getapp-device.bug-report.get${region}`,
+} as const
+
+export const SbomTopics = {
+    SCAN_REQUEST: `getapp-sbom-generator.scan.request${region}`,
+    RETRY_SCAN: `getapp-sbom-generator.scan.retry${region}`,
+    GET_SCAN_STATUS: `getapp-sbom-generator.scan.status${region}`,
+    GET_SCAN_RESULT: `getapp-sbom-generator.scan.result${region}`,
+    GET_SCANS: `getapp-sbom-generator.scan.list${region}`,
+    DELETE_SCAN: `getapp-sbom-generator.scan.delete${region}`,
+    CHECK_HEALTH: `getapp-sbom-generator.check-health${region}`,
+} as const
+
+export const SbomTopicsEmit = {
+    SCAN_FILE: `getapp-sbom-generator.scan.file${region}`,
+    SCAN_COMPLETE: `getapp-sbom-generator.scan.complete${region}`,
+    SCAN_FAILED: `getapp-sbom-generator.scan.failed${region}`,
 } as const
