@@ -219,16 +219,18 @@ export class DetailedProjectDto extends ProjectDto {
     this.createdAt = project.createdDate;
     this.members = project.memberProject?.map(memberProject => new MemberResDto().fromMemberProjectEntity(memberProject));
     this.tokens = project.tokens?.map(token => ProjectTokenDto.fromProjectTokenEntity(token));
-    this.gitWebhookUrl = project.gitWebhookUrl;
-    this.gitCloneUrl = project.gitCloneUrl ?? undefined;
-    this.gitSshKeyConfigured = !!project.gitSshKey;
-    this.gitCloneInterval = project.gitCloneInterval;
-    this.gitBranch = project.gitBranch;
-    this.gitHttpsCredentialsConfigured = !!(project.gitHttpsUsername && project.gitHttpsPassword);
-    this.gitGetappFilePath = project.gitGetappFilePath;
-    this.gitAuthMethod = project.gitSshKey
+
+    const gs = project.gitSource;
+    this.gitWebhookUrl = gs?.webhookUrl;
+    this.gitCloneUrl = gs?.cloneUrl ?? undefined;
+    this.gitSshKeyConfigured = !!gs?.sshKey;
+    this.gitCloneInterval = gs?.cloneInterval;
+    this.gitBranch = gs?.branch;
+    this.gitHttpsCredentialsConfigured = !!(gs?.httpsUsername && gs?.httpsPassword);
+    this.gitGetappFilePath = gs?.getappFilePath;
+    this.gitAuthMethod = gs?.sshKey
       ? GitAuthMethod.SSH_KEY
-      : (project.gitHttpsUsername && project.gitHttpsPassword)
+      : (gs?.httpsUsername && gs?.httpsPassword)
         ? GitAuthMethod.HTTPS_CREDENTIALS
         : GitAuthMethod.NONE;
 
