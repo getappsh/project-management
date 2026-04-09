@@ -1,5 +1,5 @@
 import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity, DocEntity, PlatformEntity, ProjectType, LabelEntity } from '@app/common/database/entities';
-import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, forwardRef, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike, In } from 'typeorm';
@@ -56,7 +56,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     @InjectRepository(LabelEntity) private readonly labelRepo: Repository<LabelEntity>,
     @Inject("OidcProviderService") private readonly oidcService: OidcService,
     @Inject(MicroserviceName.UPLOAD_SERVICE) private readonly uploadClient: MicroserviceClient,
-    @Inject(GitSyncService) private readonly gitSyncService: GitSyncService,
+    @Inject(forwardRef(() => GitSyncService)) private readonly gitSyncService: GitSyncService,
   ) { }
   async getUsers(params: UserSearchDto) {
     return await this.oidcService.getUsers(params)
@@ -1063,6 +1063,31 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   async onModuleInit() {
     this.uploadClient.subscribeToResponseOf([UploadTopics.DELETE_RELEASE])
     await this.uploadClient.connect()
+  }
+
+  async getOrCreateGitSyncProjectToken(projectId: number): Promise<string> {
+    let tokenEntity = await this.tokenRepo.findOne({
+      where: {
+        project: { id: projectId },
+        isActive: true,
+        neverExpires: true,
+        name: 'git-sync-system',
+      },
+      order: { createdDate: 'DESC' },
+    });
+
+    if (!tokenEntity) {
+      this.logger.log(`Creating git-sync token for project ${projectId}`);
+      const tokenDto = await this.createToken({
+        projectId,
+        projectIdentifier: projectId,
+        name: 'git-sync-system',
+        neverExpires: true,
+      });
+      return tokenDto.token;
+    }
+
+    return tokenEntity.token;
   }
 
 }

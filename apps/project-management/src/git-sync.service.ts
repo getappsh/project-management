@@ -1,7 +1,7 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan, IsNull } from 'typeorm';
-import { ProjectEntity, ProjectTokenEntity } from '@app/common/database/entities';
+import { ProjectEntity } from '@app/common/database/entities';
 import { 
   GitSyncResultDto, 
   GitSyncStatus, 
@@ -11,7 +11,6 @@ import {
   GitSyncCompletedEvent
 } from '@app/common/dto/project-management';
 import { ImportReleaseDto } from '@app/common/dto/delivery';
-import { Inject } from '@nestjs/common';
 import { MicroserviceClient, MicroserviceName } from '@app/common/microservice-client';
 import { UploadTopics, ProjectManagementTopicsEmit } from '@app/common/microservice-client/topics';
 import { lastValueFrom } from 'rxjs';
@@ -21,7 +20,7 @@ import * as os from 'os';
 import { promisify } from 'util';
 import { exec } from 'child_process';
 import { ClsService } from 'nestjs-cls';
-import { JwtService } from '@nestjs/jwt';
+import { ProjectManagementService } from './project-management.service';
 
 const execAsync = promisify(exec);
 
@@ -35,12 +34,11 @@ export class GitSyncService {
   constructor(
     @InjectRepository(ProjectEntity)
     private readonly projectRepo: Repository<ProjectEntity>,
-    @InjectRepository(ProjectTokenEntity)
-    private readonly tokenRepo: Repository<ProjectTokenEntity>,
     @Inject(MicroserviceName.UPLOAD_SERVICE)
     private readonly uploadClient: MicroserviceClient,
     private readonly cls: ClsService,
-    private readonly jwtService: JwtService,
+    @Inject(forwardRef(() => ProjectManagementService))
+    private readonly projectManagementService: ProjectManagementService,
   ) {}
 
   /**
@@ -374,7 +372,7 @@ export class GitSyncService {
     this.logger.log(`Triggering release import for project ${projectId}, version ${config.version}`);
 
     // Get a valid project token for authentication
-    const projectToken = await this.getOrCreateProjectToken(projectId);
+    const projectToken = await this.projectManagementService.getOrCreateGitSyncProjectToken(projectId);
     
     // Use config as-is (it's already an ImportReleaseDto), just set auth fields
     const importDto: ImportReleaseDto = {
@@ -407,64 +405,6 @@ export class GitSyncService {
       this.logger.error(`Failed to trigger release import: ${error.message}`);
       throw new Error(`Failed to trigger release import: ${error.message}`);
     }
-  }
-
-  /**
-   * Get or create a project token for system operations
-   */
-  private async getOrCreateProjectToken(projectId: number): Promise<string> {
-    // Get project details for token payload
-    const project = await this.projectRepo.findOne({
-      where: { id: projectId },
-      select: { id: true, name: true },
-    });
-
-    if (!project) {
-      throw new NotFoundException(`Project ${projectId} not found`);
-    }
-
-    // Look for an existing active token that doesn't expire
-    let tokenEntity = await this.tokenRepo.findOne({
-      where: {
-        project: { id: projectId },
-        isActive: true,
-        neverExpires: true,
-        name: 'git-sync-system',
-      },
-      order: { createdDate: 'DESC' },
-    });
-
-    // If no permanent token exists, create one for git-sync
-    if (!tokenEntity) {
-      this.logger.log(`Creating git-sync token for project ${projectId}`);
-      const jwtToken = this.generateToken(projectId, project.name, 'git-sync-system', true);
-      
-      const newToken = this.tokenRepo.create({
-        project: { id: projectId } as ProjectEntity,
-        name: 'git-sync-system',
-        token: jwtToken,
-        neverExpires: true,
-        isActive: true,
-      });
-      tokenEntity = await this.tokenRepo.save(newToken);
-    }
-
-    return tokenEntity.token;
-  }
-
-  /**
-   * Generate a JWT token for project access
-   */
-  private generateToken(projectId: number, projectName: string, name: string, neverExpires: boolean, expirationDate?: Date): string {
-    this.logger.debug(`Generating JWT token for project ${projectId}`);
-    const payload = { projectId, projectName, name, neverExpires };
-    const expiresIn = neverExpires
-      ? '100y'
-      : expirationDate
-        ? Math.floor((expirationDate.getTime() - Date.now()) / 1000)
-        : '1y';
-
-    return this.jwtService.sign({ data: payload }, { expiresIn });
   }
 
   /**
