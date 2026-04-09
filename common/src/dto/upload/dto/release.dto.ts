@@ -333,10 +333,10 @@ export class ComponentV2Dto {
     dto.status = release.status;
     dto.createdAt = release.createdAt;
     dto.updatedAt = release.updatedAt;
-    dto.projectId = release?.project?.id;
-    dto.projectName = release?.project?.name;
-    dto.projectTypeV2 = release?.project?.projectType;
+    dto.projectName = release.project.name;
+    dto.projectTypeV2 = release.project.projectType;
     dto.type = ProjectType.PRODUCT;
+    dto.projectId = release?.project?.id;
     dto.latest = release.latest;
     dto.releasedAt = release.releasedAt ?? undefined;
     dto.size = release?.artifacts
