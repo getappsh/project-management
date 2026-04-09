@@ -1,4 +1,4 @@
-import { Column, Entity, Index, JoinTable, ManyToMany, OneToMany, ManyToOne, JoinColumn } from "typeorm";
+import { Column, Entity, Index, JoinTable, ManyToMany, OneToMany, ManyToOne, JoinColumn, OneToOne } from "typeorm";
 import { BaseEntity } from "./base.entity";
 import { MemberProjectEntity } from "./member_project.entity";
 import { RegulationEntity } from "./regulation.entity";
@@ -9,6 +9,7 @@ import { ProjectType } from "./enums.entity";
 import { DeviceTypeEntity } from "./device-type.entity";
 import { PlatformEntity } from "./platform.entity";
 import { LabelEntity } from "./label.entity";
+import { ProjectGitSourceEntity } from "./project-git-source.entity";
 
 @Entity("project")
 export class ProjectEntity extends BaseEntity {
@@ -62,29 +63,8 @@ export class ProjectEntity extends BaseEntity {
     @JoinColumn({ name: "label_id" })
     label: LabelEntity | null;
 
-    @Column({ name: "git_clone_url", nullable: true, type: 'varchar' })
-    gitCloneUrl?: string | null;
-
-    @Column({ name: "git_ssh_key", nullable: true, type: "text" })
-    gitSshKey?: string | null;
-
-    @Column({ name: "git_webhook_url", nullable: true })
-    gitWebhookUrl?: string;
-
-    @Column({ name: "git_clone_interval", nullable: true, type: "integer" })
-    gitCloneInterval?: number;
-
-    @Column({ name: "git_branch", nullable: true })
-    gitBranch?: string;
-
-    @Column({ name: "git_https_username", nullable: true, type: 'varchar' })
-    gitHttpsUsername?: string | null;
-
-    @Column({ name: "git_https_password", nullable: true, type: "text" })
-    gitHttpsPassword?: string | null;
-
-    @Column({ name: "git_getapp_file_path", nullable: true })
-    gitGetappFilePath?: string;
+    @OneToOne(() => ProjectGitSourceEntity, gs => gs.project, { nullable: true })
+    gitSource?: ProjectGitSourceEntity | null;
 
     toString() {
         return JSON.stringify(this)

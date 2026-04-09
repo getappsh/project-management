@@ -1,4 +1,4 @@
-import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity, DocEntity, PlatformEntity, ProjectType, LabelEntity } from '@app/common/database/entities';
+import { MemberProjectEntity, MemberEntity, ProjectEntity, ProjectGitSourceEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity, DocEntity, PlatformEntity, ProjectType, LabelEntity } from '@app/common/database/entities';
 import { BadRequestException, ConflictException, ForbiddenException, forwardRef, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -24,7 +24,7 @@ import {
   DocsParams,
   UpdateDocDto,
   LabelDto,
-  LabelNameDto
+  LabelNameDto,
 } from '@app/common/dto/project-management';
 import { ErrorCode, AppError, AppErrorException, catchRpcError } from '@app/common/dto/error';
 import { OidcService, UserSearchDto } from '@app/common/oidc/oidc.interface';
@@ -49,6 +49,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     @InjectRepository(MemberProjectEntity) private readonly memberProjectRepo: Repository<MemberProjectEntity>,
     @InjectRepository(MemberEntity) private readonly memberRepo: Repository<MemberEntity>,
     @InjectRepository(ProjectEntity) private readonly projectRepo: Repository<ProjectEntity>,
+    @InjectRepository(ProjectGitSourceEntity) private readonly gitSourceRepo: Repository<ProjectGitSourceEntity>,
     @InjectRepository(PlatformEntity) private readonly platformRepo: Repository<PlatformEntity>,
     @InjectRepository(ProjectTokenEntity) private readonly tokenRepo: Repository<ProjectTokenEntity>,
     @InjectRepository(DeviceEntity) private readonly deviceRepo: Repository<DeviceEntity>,
@@ -277,27 +278,6 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       project.label = label;
     }
 
-    // Generate webhook URL if git integration is configured
-    if (projectDto.gitCloneUrl) {
-      const webhookToken = this.generateWebhookToken();
-      project.gitCloneUrl = projectDto.gitCloneUrl;
-      project.gitCloneInterval = projectDto.gitCloneInterval ?? 60; // Default 60 minutes
-      project.gitBranch = projectDto.gitBranch;
-      project.gitGetappFilePath = projectDto.gitGetappFilePath;
-      project.gitWebhookUrl = this.generateWebhookUrl(webhookToken, projectDto.apiBaseUrl);
-
-      // SSH key and HTTPS credentials are mutually exclusive
-      if (projectDto.gitSshKey) {
-        project.gitSshKey = projectDto.gitSshKey;
-        project.gitHttpsUsername = null;
-        project.gitHttpsPassword = null;
-      } else {
-        project.gitSshKey = null;
-        project.gitHttpsUsername = projectDto.gitHttpsUsername;
-        project.gitHttpsPassword = projectDto.gitHttpsPassword;
-      }
-    }
-
     try {
       project = await this.projectRepo.save(project);
     } catch (error) {
@@ -306,6 +286,31 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
         throw new ConflictException('Project name already exists');
       }
       throw error;
+    }
+
+    // Create git source if provided
+    if (projectDto.gitCloneUrl) {
+      const gitSource = new ProjectGitSourceEntity();
+      gitSource.project = project;
+      const webhookToken = this.generateWebhookToken();
+      gitSource.cloneUrl = projectDto.gitCloneUrl;
+      gitSource.cloneInterval = projectDto.gitCloneInterval ?? 60;
+      gitSource.branch = projectDto.gitBranch;
+      gitSource.getappFilePath = projectDto.gitGetappFilePath;
+      gitSource.webhookUrl = this.generateWebhookUrl(webhookToken, projectDto.apiBaseUrl);
+
+      // SSH key and HTTPS credentials are mutually exclusive
+      if (projectDto.gitSshKey) {
+        gitSource.sshKey = projectDto.gitSshKey;
+        gitSource.httpsUsername = null;
+        gitSource.httpsPassword = null;
+      } else {
+        gitSource.sshKey = null;
+        gitSource.httpsUsername = projectDto.gitHttpsUsername;
+        gitSource.httpsPassword = projectDto.gitHttpsPassword;
+      }
+
+      project.gitSource = await this.gitSourceRepo.save(gitSource);
     }
 
     this.logger.debug(`Member: ${member}`)
@@ -324,7 +329,10 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   async editProject(dto: EditProjectDto): Promise<ProjectDto> {
     this.logger.debug(`Edit project: ${dto.projectId}`)
 
-    const project = await this.projectRepo.findOneBy({ id: dto.projectId });
+    const project = await this.projectRepo.findOne({
+      where: { id: dto.projectId },
+      relations: { gitSource: true },
+    });
     if (!project) {
       throw new NotFoundException('Project not found');
     }
@@ -351,45 +359,49 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       }
     }
 
-    // Handle git integration updates
+    // Handle git source updates
     if (dto.gitCloneUrl !== undefined) {
-      project.gitCloneUrl = dto.gitCloneUrl;
-      project.gitCloneInterval = dto.gitCloneInterval !== undefined ? dto.gitCloneInterval : (project.gitCloneInterval ?? 60);
-      project.gitBranch = dto.gitBranch !== undefined ? dto.gitBranch : project.gitBranch;
-      project.gitGetappFilePath = dto.gitGetappFilePath !== undefined ? dto.gitGetappFilePath : project.gitGetappFilePath;
-
-      // SSH key and HTTPS credentials are mutually exclusive — the one being explicitly set wins,
-      // and clears the other. If neither is provided in this update, keep existing values unchanged.
-      if (dto.gitSshKey !== undefined) {
-        if (dto.gitSshKey) {
-          project.gitSshKey = dto.gitSshKey;
-          project.gitHttpsUsername = null;
-          project.gitHttpsPassword = null;
-        } else {
-          project.gitSshKey = null;
+      if (!dto.gitCloneUrl) {
+        // Remove git source entirely if cloneUrl is cleared
+        if (project.gitSource) {
+          await this.gitSourceRepo.remove(project.gitSource);
+          project.gitSource = null;
         }
-      } else if (dto.gitHttpsUsername !== undefined || dto.gitHttpsPassword !== undefined) {
-        project.gitHttpsUsername = dto.gitHttpsUsername !== undefined ? dto.gitHttpsUsername : project.gitHttpsUsername;
-        project.gitHttpsPassword = dto.gitHttpsPassword !== undefined ? dto.gitHttpsPassword : project.gitHttpsPassword;
-        if (project.gitHttpsUsername || project.gitHttpsPassword) {
-          project.gitSshKey = null;
-        }
-      }
+      } else {
+        // Create or update git source
+        const gitSource = project.gitSource ?? new ProjectGitSourceEntity();
+        gitSource.cloneUrl = dto.gitCloneUrl;
+        gitSource.cloneInterval = dto.gitCloneInterval !== undefined ? dto.gitCloneInterval : (gitSource.cloneInterval ?? 60);
+        gitSource.branch = dto.gitBranch !== undefined ? dto.gitBranch : gitSource.branch;
+        gitSource.getappFilePath = dto.gitGetappFilePath !== undefined ? dto.gitGetappFilePath : gitSource.getappFilePath;
 
-      // Generate new webhook URL if setting up git for first time
-      // Keep existing webhook URL if it already exists (don't regenerate)
-      if (dto.gitCloneUrl && !project.gitWebhookUrl) {
-        const webhookToken = this.generateWebhookToken();
-        project.gitWebhookUrl = this.generateWebhookUrl(webhookToken, dto.apiBaseUrl);
-      } else if (!dto.gitCloneUrl) {
-        // Clear all git settings if gitCloneUrl is set to null/empty
-        project.gitWebhookUrl = undefined;
-        project.gitSshKey = undefined;
-        project.gitCloneInterval = undefined;
-        project.gitBranch = undefined;
-        project.gitHttpsUsername = undefined;
-        project.gitHttpsPassword = undefined;
-        project.gitGetappFilePath = undefined;
+        // SSH key and HTTPS credentials are mutually exclusive
+        if (dto.gitSshKey !== undefined) {
+          if (dto.gitSshKey) {
+            gitSource.sshKey = dto.gitSshKey;
+            gitSource.httpsUsername = null;
+            gitSource.httpsPassword = null;
+          } else {
+            gitSource.sshKey = null;
+          }
+        } else if (dto.gitHttpsUsername !== undefined || dto.gitHttpsPassword !== undefined) {
+          gitSource.httpsUsername = dto.gitHttpsUsername !== undefined ? dto.gitHttpsUsername : gitSource.httpsUsername;
+          gitSource.httpsPassword = dto.gitHttpsPassword !== undefined ? dto.gitHttpsPassword : gitSource.httpsPassword;
+          if (gitSource.httpsUsername || gitSource.httpsPassword) {
+            gitSource.sshKey = null;
+          }
+        }
+
+        // Generate webhook URL once when setting up git for the first time
+        if (!gitSource.webhookUrl) {
+          const webhookToken = this.generateWebhookToken();
+          gitSource.webhookUrl = this.generateWebhookUrl(webhookToken, dto.apiBaseUrl);
+        }
+
+        if (!project.gitSource) {
+          gitSource.project = project;
+        }
+        project.gitSource = await this.gitSourceRepo.save(gitSource);
       }
     }
 
@@ -694,7 +706,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   async getProject(params: ProjectIdentifierParams, email: string): Promise<DetailedProjectDto> {
     const project = await this.projectRepo.findOne({
       where: { id: params.projectId },
-      relations: { memberProject: { member: true }, tokens: true, label: true },
+      relations: { memberProject: { member: true }, tokens: true, label: true, gitSource: true },
     });
 
     if (!project) {
@@ -1042,8 +1054,9 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     // Find project by webhook URL
     const project = await this.projectRepo.findOne({
       where: {
-        gitWebhookUrl: ILike(`%${token}%`)
-      }
+        gitSource: { webhookUrl: ILike(`%${token}%`) }
+      },
+      relations: { gitSource: true },
     });
 
     if (!project) {

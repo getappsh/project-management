@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThan, IsNull } from 'typeorm';
+import { Repository, MoreThan } from 'typeorm';
 import { ProjectEntity } from '@app/common/database/entities';
 import { 
   GitSyncResultDto, 
@@ -48,13 +48,14 @@ export class GitSyncService {
   async syncRepository(dto: TriggerGitSyncDto): Promise<GitSyncResultDto> {
     const project = await this.projectRepo.findOne({
       where: this.findProjectCondition(dto.projectIdentifier),
+      relations: { gitSource: true },
     });
 
     if (!project) {
       throw new NotFoundException(`Project not found: ${dto.projectIdentifier}`);
     }
 
-    if (!project.gitCloneUrl) {
+    if (!project.gitSource?.cloneUrl) {
       throw new BadRequestException('Git clone URL not configured for this project');
     }
 
@@ -89,7 +90,7 @@ export class GitSyncService {
         await this.cloneRepository(project, repoDir, sshDir);
 
         // Read .getapp file
-        const getappConfig = await this.readGetappFile(repoDir, project.gitGetappFilePath);
+        const getappConfig = await this.readGetappFile(repoDir, project.gitSource!.getappFilePath);
 
         if (!getappConfig) {
           result.status = GitSyncStatus.FAILED;
@@ -175,21 +176,22 @@ export class GitSyncService {
 
   /**
    * Get all projects that need periodic syncing
-   * Returns projects with gitCloneInterval configured (regardless of webhook presence)
+   * Returns projects with a git source configured and cloneInterval > 0
    */
   async getProjectsForPeriodicSync(): Promise<ProjectEntity[]> {
     const projects = await this.projectRepo.find({
       where: {
-        gitCloneInterval: MoreThan(0),
+        gitSource: { cloneInterval: MoreThan(0) },
       },
+      relations: { gitSource: true },
     });
 
-    // Filter out projects without git configuration and those currently syncing
-    return projects.filter(p => 
-      p.gitCloneUrl && 
-      p.gitCloneInterval && 
-      p.gitCloneInterval > 0 &&
-      !this.syncInProgress.has(p.id) // Don't return projects that are currently syncing
+    // Filter out projects currently syncing
+    return projects.filter(p =>
+      p.gitSource?.cloneUrl &&
+      p.gitSource?.cloneInterval &&
+      p.gitSource.cloneInterval > 0 &&
+      !this.syncInProgress.has(p.id)
     );
   }
 
@@ -200,24 +202,25 @@ export class GitSyncService {
    * @param sshDir - Isolated directory for SSH keys (completely separate from host ~/.ssh)
    */
   private async cloneRepository(project: ProjectEntity, repoDir: string, sshDir: string): Promise<void> {
-    const gitCloneUrl = project.gitCloneUrl;
+    const gitSource = project.gitSource!;
+    const gitCloneUrl = gitSource.cloneUrl;
     
     // Create repo directory
     await fs.promises.mkdir(repoDir, { recursive: true });
 
     // If SSH key is provided, set up SSH authentication in isolated directory
     let sshKeyPath: string | undefined;
-    if (project.gitSshKey) {
-      sshKeyPath = await this.setupSshKey(project.gitSshKey, sshDir);
+    if (gitSource.sshKey) {
+      sshKeyPath = await this.setupSshKey(gitSource.sshKey, sshDir);
     }
 
     // Build the effective clone URL (embed HTTPS credentials when provided)
     let effectiveCloneUrl = gitCloneUrl!;
-    if (project.gitHttpsUsername && project.gitHttpsPassword) {
+    if (gitSource.httpsUsername && gitSource.httpsPassword) {
       try {
         const parsed = new URL(gitCloneUrl!);
-        parsed.username = encodeURIComponent(project.gitHttpsUsername);
-        parsed.password = encodeURIComponent(project.gitHttpsPassword);
+        parsed.username = encodeURIComponent(gitSource.httpsUsername);
+        parsed.password = encodeURIComponent(gitSource.httpsPassword);
         effectiveCloneUrl = parsed.toString();
       } catch {
         throw new Error(`Invalid git clone URL: ${gitCloneUrl}`);
@@ -225,9 +228,9 @@ export class GitSyncService {
     }
 
     // Build branch flag when a specific branch is configured
-    const branchFlag = project.gitBranch ? `--branch "${project.gitBranch}"` : '';
+    const branchFlag = gitSource.branch ? `--branch "${gitSource.branch}"` : '';
 
-    this.logger.debug(`Cloning repository: ${gitCloneUrl} to ${repoDir}${project.gitBranch ? ` (branch: ${project.gitBranch})` : ''}`);
+    this.logger.debug(`Cloning repository: ${gitCloneUrl} to ${repoDir}${gitSource.branch ? ` (branch: ${gitSource.branch})` : ''}`);
 
     try {
       const cmd = `git clone --depth 1 ${branchFlag} "${effectiveCloneUrl}" "${repoDir}"`;
@@ -290,7 +293,7 @@ export class GitSyncService {
 
   /**
    * Read and parse .getapp file from repository
-   * If project.gitGetappFilePath is set, reads that specific path.
+   * If gitSource.getappFilePath is set, reads that specific path.
    * Otherwise searches for files with .getapp extension (e.g., .getapp, project.getapp, config.getapp)
    * The file should be JSON format matching ImportReleaseDto structure
    */
