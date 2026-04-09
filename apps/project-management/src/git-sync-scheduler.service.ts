@@ -7,6 +7,9 @@ import { TimeoutRepeatTask } from '@app/common/safe-cron/timeout-repeated-task.d
 export class GitSyncScheduler {
   private readonly logger = new Logger(GitSyncScheduler.name);
 
+  /** Tracks the last time each project was synced, keyed by project ID */
+  private readonly lastSyncedAt = new Map<number, Date>();
+
   constructor(private readonly gitSyncService: GitSyncService) {}
 
   /**
@@ -42,17 +45,36 @@ export class GitSyncScheduler {
   }
 
   /**
-   * Sync a project (git-sync.service handles duplicate prevention)
+   * Sync a project only if its cloneInterval has elapsed since the last sync.
+   * Reads the current interval from the DB-loaded entity, so runtime changes
+   * to cloneInterval are picked up on the next scheduler tick.
    */
   private async syncProjectIfDue(project: ProjectEntity) {
+    const intervalMs = (project.gitSource!.cloneInterval!) * 60 * 1000;
+    const lastSync = this.lastSyncedAt.get(project.id);
+    const now = new Date();
+
+    if (lastSync && now.getTime() - lastSync.getTime() < intervalMs) {
+      this.logger.debug(
+        `Project ${project.id} not due for sync yet ` +
+        `(interval: ${project.gitSource!.cloneInterval} min, ` +
+        `last sync: ${lastSync.toISOString()})`,
+      );
+      return;
+    }
+
     try {
       this.logger.log(`Triggering periodic sync for project ${project.id} (${project.name})`);
-      
+      // Record sync time before triggering so rapid scheduler ticks don't double-sync
+      this.lastSyncedAt.set(project.id, now);
+
       await this.gitSyncService.syncRepository({
         projectIdentifier: project.id,
         projectId: project.id,
       });
     } catch (error) {
+      // Roll back the recorded time so the project is retried on the next tick
+      this.lastSyncedAt.delete(project.id);
       this.logger.error(`Error syncing project ${project.id}:`, error);
     }
   }
