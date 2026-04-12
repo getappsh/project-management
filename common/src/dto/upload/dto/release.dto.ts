@@ -175,7 +175,18 @@ export class ReleaseDto {
   @ApiProperty({ type: ReleaseMetadata, description: 'Release metadata including autoDeploy and postInstallAction configuration. Additional user-defined properties are supported.' })
   metadata: ReleaseMetadata;
 
-  @ApiProperty({ type: 'enum', enum: ReleaseStatusEnum })
+  @ApiProperty({
+    type: 'enum',
+    enum: ReleaseStatusEnum,
+    description:
+      '`draft`: Release is still being prepared.\n' +
+      '`in_review`: Submitted for review, not yet approved.\n' +
+      '`approved`: Approved but not yet released.\n' +
+      '`released`: Actively released and deployable.\n' +
+      '`archived`: No longer active.\n' +
+      '`error`: Release was previously released but one or more artifacts are missing from storage. ' +
+      'Requires a user with `edit-released-release` permission to resolve.',
+  })
   status: ReleaseStatusEnum;
 
   @ApiProperty()
@@ -205,7 +216,11 @@ export class ReleaseDto {
   @ApiProperty({ description: 'Indicates if this release was imported from another system' })
   isImported: boolean
 
-  @ApiProperty({ description: 'Indicates if this release is read-only (imported releases that are released)' })
+  @ApiProperty({
+    description:
+      'Indicates if this release is read-only. ' +
+      'A release is read-only when its status is `released` or `error` and the current user does not have the `edit-released-release` permission.',
+  })
   readonly: boolean
 
   static fromEntity(release: ReleaseEntity, userCanEditImported?: boolean): ReleaseDto {
@@ -228,7 +243,7 @@ export class ReleaseDto {
     dto.updatedBy = release.updatedBy ?? undefined;
     dto.isImported = release.isImported ?? false;
     // Readonly if it's imported AND released, but user doesn't have edit permission
-    dto.readonly = release.status === ReleaseStatusEnum.RELEASED && !userCanEditImported;
+    dto.readonly = (release.status === ReleaseStatusEnum.RELEASED || release.status === ReleaseStatusEnum.ERROR) && !userCanEditImported;
 
     return dto;
   }
