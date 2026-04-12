@@ -1061,7 +1061,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
 
     if (!project) {
       this.logger.warn(`No project found for webhook token: ${token.substring(0, 8)}...`);
-      throw AppErrorException.notFound(ErrorCode.PM_WEBHOOK_INVALID, 'Invalid webhook token');
+      throw new AppError(ErrorCode.PM_WEBHOOK_INVALID, 'Invalid webhook token', 404);
     }
 
     this.logger.log(`Found project ${project.id} for webhook, triggering git sync`);
