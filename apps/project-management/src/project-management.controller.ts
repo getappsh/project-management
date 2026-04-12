@@ -25,12 +25,15 @@ import {
   DocsParams, 
   UpdateDocDto,
   LabelNameDto,
+  TriggerGitSyncDto,
+  CheckReleaseExistsDto,
 } from '@app/common/dto/project-management';
 import { RpcPayload, UserContextInterceptor } from '@app/common/microservice-client';
 import * as fs from 'fs';
 import { AuthUser } from './utils/auth-user.decorator';
 import { RoleInProject } from '@app/common/database/entities';
 import { RegulationService } from './regulation.service';
+import { GitSyncService } from './git-sync.service';
 import { UserSearchDto } from '@app/common/oidc/oidc.interface';
 import { ValidateProjectAnyAccess, ValidateProjectUserAccess } from '@app/common/utils/project-access';
 import { ProjectReleasesChangedEvent } from '@app/common/dto/project-management';
@@ -42,7 +45,8 @@ export class ProjectManagementController {
 
   constructor(
     private readonly projectManagementService: ProjectManagementService,
-    private readonly regulationService: RegulationService
+    private readonly regulationService: RegulationService,
+    private readonly gitSyncService: GitSyncService
   ) { }
 
   @MessagePattern(ProjectManagementTopics.GET_USERS)
@@ -308,6 +312,24 @@ export class ProjectManagementController {
   @MessagePattern(ProjectManagementTopics.DELETE_PROJECT_DOC)
   deleteDoc(@RpcPayload() params: DocsParams) {
     return this.projectManagementService.deleteDoc(params)
+  }
+
+  // GIT INTEGRATION
+
+  @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
+  @MessagePattern(ProjectManagementTopics.TRIGGER_GIT_SYNC)
+  triggerGitSync(@RpcPayload() dto: TriggerGitSyncDto) {
+    return this.gitSyncService.syncRepository(dto);
+  }
+
+  @MessagePattern(ProjectManagementTopics.TRIGGER_GIT_SYNC_BY_WEBHOOK)
+  triggerGitSyncByWebhook(@RpcPayload() data: { webhookToken: string }) {
+    return this.projectManagementService.triggerGitSyncByWebhook(data.webhookToken);
+  }
+
+  @MessagePattern(ProjectManagementTopics.CHECK_RELEASE_EXISTS)
+  checkReleaseExists(@RpcPayload() dto: CheckReleaseExistsDto) {
+    return this.gitSyncService.checkReleaseExists(dto);
   }
 
   private readImageVersion() {

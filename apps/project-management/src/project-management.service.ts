@@ -1,5 +1,5 @@
-import { MemberProjectEntity, MemberEntity, ProjectEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity, DocEntity, PlatformEntity, ProjectType, LabelEntity } from '@app/common/database/entities';
-import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { MemberProjectEntity, MemberEntity, ProjectEntity, ProjectGitSourceEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity, DocEntity, PlatformEntity, ProjectType, LabelEntity } from '@app/common/database/entities';
+import { BadRequestException, ConflictException, ForbiddenException, forwardRef, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike, In } from 'typeorm';
@@ -24,7 +24,7 @@ import {
   DocsParams,
   UpdateDocDto,
   LabelDto,
-  LabelNameDto
+  LabelNameDto,
 } from '@app/common/dto/project-management';
 import { ErrorCode, AppError, AppErrorException, catchRpcError } from '@app/common/dto/error';
 import { OidcService, UserSearchDto } from '@app/common/oidc/oidc.interface';
@@ -34,6 +34,8 @@ import { MicroserviceClient, MicroserviceName } from '@app/common/microservice-c
 import { UploadTopics } from '@app/common/microservice-client/topics';
 import { ReleaseParams } from '@app/common/dto/upload';
 import { lastValueFrom } from 'rxjs';
+import { randomBytes } from 'crypto';
+import { GitSyncService } from './git-sync.service';
 
 
 @Injectable()
@@ -47,6 +49,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     @InjectRepository(MemberProjectEntity) private readonly memberProjectRepo: Repository<MemberProjectEntity>,
     @InjectRepository(MemberEntity) private readonly memberRepo: Repository<MemberEntity>,
     @InjectRepository(ProjectEntity) private readonly projectRepo: Repository<ProjectEntity>,
+    @InjectRepository(ProjectGitSourceEntity) private readonly gitSourceRepo: Repository<ProjectGitSourceEntity>,
     @InjectRepository(PlatformEntity) private readonly platformRepo: Repository<PlatformEntity>,
     @InjectRepository(ProjectTokenEntity) private readonly tokenRepo: Repository<ProjectTokenEntity>,
     @InjectRepository(DeviceEntity) private readonly deviceRepo: Repository<DeviceEntity>,
@@ -54,6 +57,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     @InjectRepository(LabelEntity) private readonly labelRepo: Repository<LabelEntity>,
     @Inject("OidcProviderService") private readonly oidcService: OidcService,
     @Inject(MicroserviceName.UPLOAD_SERVICE) private readonly uploadClient: MicroserviceClient,
+    @Inject(forwardRef(() => GitSyncService)) private readonly gitSyncService: GitSyncService,
   ) { }
   async getUsers(params: UserSearchDto) {
     return await this.oidcService.getUsers(params)
@@ -259,7 +263,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     project.name = projectDto.name;
     project.projectName = projectDto.projectName;
     project.description = projectDto.description;
-    project.projectType = projectDto.projectType ?? ProjectType.PRODUCT;
+    project.projectType = projectDto.projectType ?? ProjectType.APPLICATION;
 
     this.enforceProjectRestrictions({ projectType: project.projectType, platforms: projectDto.platforms });
 
@@ -284,6 +288,31 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       throw error;
     }
 
+    // Create git source if provided
+    if (projectDto.gitCloneUrl) {
+      const gitSource = new ProjectGitSourceEntity();
+      gitSource.project = project;
+      const webhookToken = this.generateWebhookToken();
+      gitSource.cloneUrl = projectDto.gitCloneUrl;
+      gitSource.cloneInterval = projectDto.gitCloneInterval ?? 60;
+      gitSource.branch = projectDto.gitBranch;
+      gitSource.getappFilePath = projectDto.gitGetappFilePath;
+      gitSource.webhookUrl = this.generateWebhookUrl(webhookToken, projectDto.apiBaseUrl);
+
+      // SSH key and HTTPS credentials are mutually exclusive
+      if (projectDto.gitSshKey) {
+        gitSource.sshKey = projectDto.gitSshKey;
+        gitSource.httpsUsername = null;
+        gitSource.httpsPassword = null;
+      } else {
+        gitSource.sshKey = null;
+        gitSource.httpsUsername = projectDto.gitHttpsUsername;
+        gitSource.httpsPassword = projectDto.gitHttpsPassword;
+      }
+
+      project.gitSource = await this.gitSourceRepo.save(gitSource);
+    }
+
     this.logger.debug(`Member: ${member}`)
 
     let mp = new MemberProjectEntity();
@@ -300,7 +329,10 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   async editProject(dto: EditProjectDto): Promise<ProjectDto> {
     this.logger.debug(`Edit project: ${dto.projectId}`)
 
-    const project = await this.projectRepo.findOneBy({ id: dto.projectId });
+    const project = await this.projectRepo.findOne({
+      where: { id: dto.projectId },
+      relations: { gitSource: true },
+    });
     if (!project) {
       throw new NotFoundException('Project not found');
     }
@@ -327,6 +359,52 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       }
     }
 
+    // Handle git source updates
+    if (dto.gitCloneUrl !== undefined) {
+      if (!dto.gitCloneUrl) {
+        // Remove git source entirely if cloneUrl is cleared
+        if (project.gitSource) {
+          await this.gitSourceRepo.remove(project.gitSource);
+          project.gitSource = null;
+        }
+      } else {
+        // Create or update git source
+        const gitSource = project.gitSource ?? new ProjectGitSourceEntity();
+        gitSource.cloneUrl = dto.gitCloneUrl;
+        gitSource.cloneInterval = dto.gitCloneInterval !== undefined ? dto.gitCloneInterval : (gitSource.cloneInterval ?? 60);
+        gitSource.branch = dto.gitBranch !== undefined ? dto.gitBranch : gitSource.branch;
+        gitSource.getappFilePath = dto.gitGetappFilePath !== undefined ? dto.gitGetappFilePath : gitSource.getappFilePath;
+
+        // SSH key and HTTPS credentials are mutually exclusive
+        if (dto.gitSshKey !== undefined) {
+          if (dto.gitSshKey) {
+            gitSource.sshKey = dto.gitSshKey;
+            gitSource.httpsUsername = null;
+            gitSource.httpsPassword = null;
+          } else {
+            gitSource.sshKey = null;
+          }
+        } else if (dto.gitHttpsUsername !== undefined || dto.gitHttpsPassword !== undefined) {
+          gitSource.httpsUsername = dto.gitHttpsUsername !== undefined ? dto.gitHttpsUsername : gitSource.httpsUsername;
+          gitSource.httpsPassword = dto.gitHttpsPassword !== undefined ? dto.gitHttpsPassword : gitSource.httpsPassword;
+          if (gitSource.httpsUsername || gitSource.httpsPassword) {
+            gitSource.sshKey = null;
+          }
+        }
+
+        // Generate webhook URL once when setting up git for the first time
+        if (!gitSource.webhookUrl) {
+          const webhookToken = this.generateWebhookToken();
+          gitSource.webhookUrl = this.generateWebhookUrl(webhookToken, dto.apiBaseUrl);
+        }
+
+        if (!project.gitSource) {
+          gitSource.project = project;
+        }
+        project.gitSource = await this.gitSourceRepo.save(gitSource);
+      }
+    }
+
     try {
       const savedProject = await this.projectRepo.save(project);
       return new ProjectDto().fromProjectEntity(savedProject);
@@ -338,10 +416,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     }
   }
 
-  private enforceProjectRestrictions(project: { projectType: ProjectType, platforms?: string[] }) {
-    if (project.projectType === ProjectType.FORMATION && (project.platforms?.length ?? 0) > 1) {
-      throw new BadRequestException('Formation projects can only have one platform');
-    }
+  private enforceProjectRestrictions(_project: { projectType: ProjectType, platforms?: string[] }) {
   }
 
   async deleteProject(params: ProjectIdentifierParams): Promise<string> {
@@ -631,7 +706,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   async getProject(params: ProjectIdentifierParams, email: string): Promise<DetailedProjectDto> {
     const project = await this.projectRepo.findOne({
       where: { id: params.projectId },
-      relations: { memberProject: { member: true }, tokens: true, label: true },
+      relations: { memberProject: { member: true }, tokens: true, label: true, gitSource: true },
     });
 
     if (!project) {
@@ -950,9 +1025,82 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     }
   }
 
+  /**
+   * Generate a secure random token for webhook URLs
+   */
+  private generateWebhookToken(): string {
+    return randomBytes(32).toString('hex');
+  }
+
+  /**
+   * Generate webhook URL using the webhook token
+   * Format: /api/projects/git-webhook/{token}
+   */
+  private generateWebhookUrl(token: string, apiBaseUrl?: string): string {
+    const baseUrl = process.env.API_BASE_URL || apiBaseUrl || 'http://localhost:3000';
+    return `${baseUrl}/api/projects/git-webhook/${token}`;
+  }
+
+  /**
+   * Trigger git sync based on webhook token
+   * This is called when a webhook is received from GitHub/GitLab
+   */
+  async triggerGitSyncByWebhook(webhookToken: string): Promise<any> {
+    this.logger.log( `Triggering git sync by webhook token: ${webhookToken.substring(0, 8)}...`);
+
+    // Extract token from URL if needed
+    const token = webhookToken.split('/').pop() || webhookToken;
+
+    // Find project by webhook URL
+    const project = await this.projectRepo.findOne({
+      where: {
+        gitSource: { webhookUrl: ILike(`%${token}%`) }
+      },
+      relations: { gitSource: true },
+    });
+
+    if (!project) {
+      this.logger.warn(`No project found for webhook token: ${token.substring(0, 8)}...`);
+      throw new AppError(ErrorCode.PM_WEBHOOK_INVALID, 'Invalid webhook token', 404);
+    }
+
+    this.logger.log(`Found project ${project.id} for webhook, triggering git sync`);
+
+    // Trigger the git sync using the GitSyncService
+    return this.gitSyncService.syncRepository({
+      projectIdentifier: project.id,
+      projectId: project.id,
+    });
+  }
+
   async onModuleInit() {
     this.uploadClient.subscribeToResponseOf([UploadTopics.DELETE_RELEASE])
     await this.uploadClient.connect()
+  }
+
+  async getOrCreateGitSyncProjectToken(projectId: number): Promise<string> {
+    let tokenEntity = await this.tokenRepo.findOne({
+      where: {
+        project: { id: projectId },
+        isActive: true,
+        neverExpires: true,
+        name: 'git-sync-system',
+      },
+      order: { createdDate: 'DESC' },
+    });
+
+    if (!tokenEntity) {
+      this.logger.log(`Creating git-sync token for project ${projectId}`);
+      const tokenDto = await this.createToken({
+        projectId,
+        projectIdentifier: projectId,
+        name: 'git-sync-system',
+        neverExpires: true,
+      });
+      return tokenDto.token;
+    }
+
+    return tokenEntity.token;
   }
 
 }
