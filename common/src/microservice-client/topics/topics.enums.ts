@@ -232,6 +232,7 @@ export const DeviceTopics = {
     ADD_RULE_FIELD: `getapp-device.add-rule-field${region}`,
     REMOVE_RULE_FIELD: `getapp-device.remove-rule-field${region}`,
     EVALUATE_RESTRICTION: `getapp-device.evaluate-restriction${region}`,
+    GET_DEVICE_CONTEXT: `getapp-device.get-device-context${region}`,
     
     DISCOVER_DEVICE_CONTEXT_V2: `getapp-device.discover.device-context-V2${region}`,
     CHECK_HEALTH: `getapp-device.check-health${region}`, 
@@ -305,6 +306,7 @@ export const DeviceBugReportTopics = {
 
 export const SbomTopics = {
     SCAN_REQUEST: `getapp-sbom-generator.scan.request${region}`,
+    RETRY_SCAN: `getapp-sbom-generator.scan.retry${region}`,
     GET_SCAN_STATUS: `getapp-sbom-generator.scan.status${region}`,
     GET_SCAN_RESULT: `getapp-sbom-generator.scan.result${region}`,
     GET_SCANS: `getapp-sbom-generator.scan.list${region}`,
@@ -314,5 +316,6 @@ export const SbomTopics = {
 
 export const SbomTopicsEmit = {
     SCAN_FILE: `getapp-sbom-generator.scan.file${region}`,
-    SCAN_COMPLETED: `getapp-sbom-generator.scan.completed${region}`,
+    SCAN_COMPLETE: `getapp-sbom-generator.scan.complete${region}`,
+    SCAN_FAILED: `getapp-sbom-generator.scan.failed${region}`,
 } as const

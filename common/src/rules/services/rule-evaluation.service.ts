@@ -30,7 +30,7 @@ export class RuleEvaluationService {
     if (typeof result === 'boolean') {
       return result;
     }
-    return result?.result ?? result?.passed ?? false;
+    return result?.isPassed ?? result?.result ?? result?.passed ?? false;
   }
 
   /**

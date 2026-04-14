@@ -1,4 +1,4 @@
-import { IsOptional, IsUUID, ValidateIf, IsNotEmpty } from 'class-validator';
+import { IsOptional, IsUUID, ValidateIf, IsNotEmpty, IsNumberString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class EvaluateRuleDto {
@@ -40,6 +40,9 @@ export class EvaluatedDeviceDto {
 
   @ApiPropertyOptional({ description: 'Names of the groups the device belongs to', type: [String] })
   groupNames?: string[];
+
+  @ApiPropertyOptional({ description: 'ID of the discovery message used to build the evaluation context for this device' })
+  discoveryMessageId?: string;
 }
 
 export class AttachedReleaseDto {
@@ -68,6 +71,29 @@ export class EvaluateRuleResultDto {
 
   @ApiPropertyOptional({ description: 'Releases the policy is attached to (only present for saved policy rules)', type: [AttachedReleaseDto] })
   attachedReleases?: AttachedReleaseDto[];
+}
+
+export class GetDeviceContextDto {
+  @ApiPropertyOptional({ description: 'Device ID to look up. Required when discoveryMessageId is not provided.' })
+  @ValidateIf(o => !o.discoveryMessageId)
+  @IsNotEmpty({ message: 'Either deviceId or discoveryMessageId must be provided' })
+  @IsOptional()
+  deviceId?: string;
+
+  @ApiPropertyOptional({ description: 'ID of a specific discovery message to use. When provided, deviceId is not required.' })
+  @ValidateIf(o => !o.deviceId)
+  @IsNotEmpty({ message: 'Either deviceId or discoveryMessageId must be provided' })
+  @IsNumberString()
+  @IsOptional()
+  discoveryMessageId?: string;
+}
+
+export class DeviceContextDto {
+  @ApiProperty({ description: 'ID of the discovery message used to build this context' })
+  discoveryMessageId: string;
+
+  @ApiProperty({ description: 'The device evaluation context as used during rule evaluation' })
+  context: Record<string, any>;
 }
 
 /** @deprecated use EvaluateRuleResultDto */
