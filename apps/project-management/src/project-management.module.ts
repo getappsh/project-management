@@ -1,5 +1,5 @@
 import { DatabaseModule, UploadJwtConfigService,  } from '@app/common';
-import { MemberEntity, ProjectEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity, PlatformEntity, LabelEntity } from '@app/common/database/entities';
+import { MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity, PlatformEntity, LabelEntity } from '@app/common/database/entities';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -11,8 +11,11 @@ import { ApmModule } from '@app/common/apm/apm.module';
 import { OidcModule } from '@app/common/oidc/oidc.module';
 import { SeederService } from './utils/seeder.service';
 import { RegulationService } from './regulation.service';
+import { GitSyncService } from './git-sync.service';
+import { GitSyncScheduler } from './git-sync-scheduler.service';
 import { PROJECT_ACCESS_SERVICE } from '@app/common/utils/project-access';
 import { MicroserviceModule, MicroserviceName, MicroserviceType } from '@app/common/microservice-client';
+import { SafeCronModule } from '@app/common/safe-cron';
 
 @Module({
   imports: [
@@ -24,7 +27,7 @@ import { MicroserviceModule, MicroserviceName, MicroserviceType } from '@app/com
       useClass: UploadJwtConfigService
     }),
     TypeOrmModule.forFeature([
-      MemberEntity, ProjectEntity, MemberProjectEntity, UploadVersionEntity, 
+      MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, 
       RegulationEntity, RegulationTypeEntity, PlatformEntity,
       DeviceEntity, ProjectTokenEntity, DocEntity, LabelEntity
     ]),
@@ -34,11 +37,14 @@ import { MicroserviceModule, MicroserviceName, MicroserviceType } from '@app/com
       type: MicroserviceType.UPLOAD,
       id: "project-management"
     }),
+    SafeCronModule,
   ],
   controllers: [ProjectManagementController],
   providers: [
     ProjectManagementService, 
-    RegulationService, 
+    RegulationService,
+    GitSyncService,
+    GitSyncScheduler,
     SeederService,
     {
       provide: PROJECT_ACCESS_SERVICE,
