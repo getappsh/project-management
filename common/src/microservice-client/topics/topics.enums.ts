@@ -165,6 +165,10 @@ export const ProjectManagementTopics = {
     UPDATE_LABEL: `getapp-project-management.update-label${region}`,
     DELETE_LABEL: `getapp-project-management.delete-label${region}`,
 
+    // Git Integration
+    TRIGGER_GIT_SYNC: `getapp-project-management.trigger-git-sync${region}`,
+    TRIGGER_GIT_SYNC_BY_WEBHOOK: `getapp-project-management.trigger-git-sync-by-webhook${region}`,
+    CHECK_RELEASE_EXISTS: `getapp-project-management.check-release-exists${region}`,
     // Deployment Report
     GET_SYSTEM_WIDE_DEPLOYMENT_REPORT: `getapp-project-management.get-system-wide-deployment-report${region}`,
     GET_PROJECT_DEPLOYMENT_REPORT: `getapp-project-management.get-project-deployment-report${region}`,
@@ -179,6 +183,7 @@ export const ProjectManagementTopics = {
 
 export const ProjectManagementTopicsEmit = {
     PROJECT_RELEASES_CHANGED: `getapp-project-management.project-releases-changed${region}`,
+    GIT_SYNC_COMPLETED: `getapp-project-management.git-sync-completed${region}`,
     DEPLOYMENT_REPORT_REQUESTED: `getapp-project-management.deployment-report-requested${region}`,
     GIT_SYNC_COMPLETED: `getapp-project-management.git-sync-completed${region}`,
 }
