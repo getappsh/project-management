@@ -82,6 +82,7 @@ export const OfferingTopics = {
     GET_OFFERING_FOR_DEVICE_TYPE: `getapp-offering.get-offering-for-device-type${region}`,
     GET_OFFERING_FOR_PROJECT: `getapp-offering.get-offering-for-project${region}`,
     GET_OFFERING_FOR_ALL_PROJECTS: `getapp-offering.get-offering-for-all-project${region}`,
+    GET_OFFERING_FOR_ALL_PLATFORMS: `getapp-offering.get-offering-for-all-platforms${region}`,
     GET_OFFER_OF_COMP: `getapp-offering.get-offering-of-comp${region}`,
 
     // Policies
@@ -164,6 +165,10 @@ export const ProjectManagementTopics = {
     UPDATE_LABEL: `getapp-project-management.update-label${region}`,
     DELETE_LABEL: `getapp-project-management.delete-label${region}`,
 
+    // Git Integration
+    TRIGGER_GIT_SYNC: `getapp-project-management.trigger-git-sync${region}`,
+    TRIGGER_GIT_SYNC_BY_WEBHOOK: `getapp-project-management.trigger-git-sync-by-webhook${region}`,
+    CHECK_RELEASE_EXISTS: `getapp-project-management.check-release-exists${region}`,
     // Deployment Report
     GET_SYSTEM_WIDE_DEPLOYMENT_REPORT: `getapp-project-management.get-system-wide-deployment-report${region}`,
     GET_PROJECT_DEPLOYMENT_REPORT: `getapp-project-management.get-project-deployment-report${region}`,
@@ -173,6 +178,7 @@ export const ProjectManagementTopics = {
 
 export const ProjectManagementTopicsEmit = {
     PROJECT_RELEASES_CHANGED: `getapp-project-management.project-releases-changed${region}`,
+    GIT_SYNC_COMPLETED: `getapp-project-management.git-sync-completed${region}`,
     DEPLOYMENT_REPORT_REQUESTED: `getapp-project-management.deployment-report-requested${region}`,
 }
 
