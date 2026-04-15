@@ -16,6 +16,8 @@ import { GitSyncScheduler } from './git-sync-scheduler.service';
 import { PROJECT_ACCESS_SERVICE } from '@app/common/utils/project-access';
 import { MicroserviceModule, MicroserviceName, MicroserviceType } from '@app/common/microservice-client';
 import { SafeCronModule } from '@app/common/safe-cron';
+import { VaultModule } from '@app/common/vault';
+import { VaultCredentialsMigrationService } from './vault-credentials-migration.service';
 
 @Module({
   imports: [
@@ -38,6 +40,7 @@ import { SafeCronModule } from '@app/common/safe-cron';
       id: "project-management"
     }),
     SafeCronModule,
+    VaultModule,
   ],
   controllers: [ProjectManagementController],
   providers: [
@@ -46,6 +49,7 @@ import { SafeCronModule } from '@app/common/safe-cron';
     GitSyncService,
     GitSyncScheduler,
     SeederService,
+    VaultCredentialsMigrationService,
     {
       provide: PROJECT_ACCESS_SERVICE,
       useExisting: ProjectManagementService

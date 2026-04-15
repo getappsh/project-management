@@ -36,6 +36,7 @@ import { ReleaseParams } from '@app/common/dto/upload';
 import { lastValueFrom } from 'rxjs';
 import { randomBytes } from 'crypto';
 import { GitSyncService } from './git-sync.service';
+import { VaultService } from '@app/common/vault';
 
 
 @Injectable()
@@ -58,6 +59,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     @Inject("OidcProviderService") private readonly oidcService: OidcService,
     @Inject(MicroserviceName.UPLOAD_SERVICE) private readonly uploadClient: MicroserviceClient,
     @Inject(forwardRef(() => GitSyncService)) private readonly gitSyncService: GitSyncService,
+    private readonly vaultService: VaultService,
   ) { }
   async getUsers(params: UserSearchDto) {
     return await this.oidcService.getUsers(params)
@@ -311,6 +313,30 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       }
 
       project.gitSource = await this.gitSourceRepo.save(gitSource);
+
+      // If Vault is enabled, move plain-text credentials to Vault and store refs
+      if (this.vaultService.isEnabled) {
+        let vaultUpdated = false;
+        if (project.gitSource.sshKey && !this.vaultService.isVaultRef(project.gitSource.sshKey)) {
+          project.gitSource.sshKey = await this.vaultService.storeSecret(
+            project.gitSource.id,
+            'ssh_key',
+            project.gitSource.sshKey,
+          );
+          vaultUpdated = true;
+        }
+        if (project.gitSource.httpsPassword && !this.vaultService.isVaultRef(project.gitSource.httpsPassword)) {
+          project.gitSource.httpsPassword = await this.vaultService.storeSecret(
+            project.gitSource.id,
+            'https_password',
+            project.gitSource.httpsPassword,
+          );
+          vaultUpdated = true;
+        }
+        if (vaultUpdated) {
+          project.gitSource = await this.gitSourceRepo.save(project.gitSource);
+        }
+      }
     }
 
     this.logger.debug(`Member: ${member}`)
@@ -378,16 +404,42 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
         // SSH key and HTTPS credentials are mutually exclusive
         if (dto.gitSshKey !== undefined) {
           if (dto.gitSshKey) {
-            gitSource.sshKey = dto.gitSshKey;
+            // Clear any existing Vault secret for the old credential type
+            if (this.vaultService.isEnabled && this.vaultService.isVaultRef(gitSource.httpsPassword)) {
+              await this.vaultService.deleteSecret(gitSource.id, 'https_password');
+            }
+            gitSource.sshKey = this.vaultService.isEnabled
+              ? await this.vaultService.storeSecret(gitSource.id, 'ssh_key', dto.gitSshKey)
+              : dto.gitSshKey;
             gitSource.httpsUsername = null;
             gitSource.httpsPassword = null;
           } else {
+            // Clearing SSH key
+            if (this.vaultService.isEnabled && this.vaultService.isVaultRef(gitSource.sshKey)) {
+              await this.vaultService.deleteSecret(gitSource.id, 'ssh_key');
+            }
             gitSource.sshKey = null;
           }
         } else if (dto.gitHttpsUsername !== undefined || dto.gitHttpsPassword !== undefined) {
           gitSource.httpsUsername = dto.gitHttpsUsername !== undefined ? dto.gitHttpsUsername : gitSource.httpsUsername;
-          gitSource.httpsPassword = dto.gitHttpsPassword !== undefined ? dto.gitHttpsPassword : gitSource.httpsPassword;
+          if (dto.gitHttpsPassword !== undefined) {
+            if (dto.gitHttpsPassword) {
+              gitSource.httpsPassword = this.vaultService.isEnabled
+                ? await this.vaultService.storeSecret(gitSource.id, 'https_password', dto.gitHttpsPassword)
+                : dto.gitHttpsPassword;
+            } else {
+              // Clearing HTTPS password
+              if (this.vaultService.isEnabled && this.vaultService.isVaultRef(gitSource.httpsPassword)) {
+                await this.vaultService.deleteSecret(gitSource.id, 'https_password');
+              }
+              gitSource.httpsPassword = null;
+            }
+          }
           if (gitSource.httpsUsername || gitSource.httpsPassword) {
+            // Clear any stale SSH key vault entry when switching to HTTPS
+            if (this.vaultService.isEnabled && this.vaultService.isVaultRef(gitSource.sshKey)) {
+              await this.vaultService.deleteSecret(gitSource.id, 'ssh_key');
+            }
             gitSource.sshKey = null;
           }
         }

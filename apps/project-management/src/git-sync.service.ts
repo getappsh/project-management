@@ -21,6 +21,7 @@ import { promisify } from 'util';
 import { exec } from 'child_process';
 import { ClsService } from 'nestjs-cls';
 import { ProjectManagementService } from './project-management.service';
+import { VaultService } from '@app/common/vault';
 
 const execAsync = promisify(exec);
 
@@ -39,6 +40,7 @@ export class GitSyncService {
     private readonly cls: ClsService,
     @Inject(forwardRef(() => ProjectManagementService))
     private readonly projectManagementService: ProjectManagementService,
+    private readonly vaultService: VaultService,
   ) {}
 
   /**
@@ -208,19 +210,23 @@ export class GitSyncService {
     // Create repo directory
     await fs.promises.mkdir(repoDir, { recursive: true });
 
+    // Resolve credentials from Vault if they are stored as references
+    const resolvedSshKey = await this.vaultService.resolveSecret(gitSource.sshKey);
+    const resolvedHttpsPassword = await this.vaultService.resolveSecret(gitSource.httpsPassword);
+
     // If SSH key is provided, set up SSH authentication in isolated directory
     let sshKeyPath: string | undefined;
-    if (gitSource.sshKey) {
-      sshKeyPath = await this.setupSshKey(gitSource.sshKey, sshDir);
+    if (resolvedSshKey) {
+      sshKeyPath = await this.setupSshKey(resolvedSshKey, sshDir);
     }
 
     // Build the effective clone URL (embed HTTPS credentials when provided)
     let effectiveCloneUrl = gitCloneUrl!;
-    if (gitSource.httpsUsername && gitSource.httpsPassword) {
+    if (gitSource.httpsUsername && resolvedHttpsPassword) {
       try {
         const parsed = new URL(gitCloneUrl!);
         parsed.username = encodeURIComponent(gitSource.httpsUsername);
-        parsed.password = encodeURIComponent(gitSource.httpsPassword);
+        parsed.password = encodeURIComponent(resolvedHttpsPassword);
         effectiveCloneUrl = parsed.toString();
       } catch {
         throw new Error(`Invalid git clone URL: ${gitCloneUrl}`);
