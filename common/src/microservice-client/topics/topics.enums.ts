@@ -82,6 +82,7 @@ export const OfferingTopics = {
     GET_OFFERING_FOR_DEVICE_TYPE: `getapp-offering.get-offering-for-device-type${region}`,
     GET_OFFERING_FOR_PROJECT: `getapp-offering.get-offering-for-project${region}`,
     GET_OFFERING_FOR_ALL_PROJECTS: `getapp-offering.get-offering-for-all-project${region}`,
+    GET_OFFERING_FOR_ALL_PLATFORMS: `getapp-offering.get-offering-for-all-platforms${region}`,
     GET_OFFER_OF_COMP: `getapp-offering.get-offering-of-comp${region}`,
 
     // Policies
@@ -164,6 +165,10 @@ export const ProjectManagementTopics = {
     UPDATE_LABEL: `getapp-project-management.update-label${region}`,
     DELETE_LABEL: `getapp-project-management.delete-label${region}`,
 
+    // Git Integration
+    TRIGGER_GIT_SYNC: `getapp-project-management.trigger-git-sync${region}`,
+    TRIGGER_GIT_SYNC_BY_WEBHOOK: `getapp-project-management.trigger-git-sync-by-webhook${region}`,
+    CHECK_RELEASE_EXISTS: `getapp-project-management.check-release-exists${region}`,
     // Deployment Report
     GET_SYSTEM_WIDE_DEPLOYMENT_REPORT: `getapp-project-management.get-system-wide-deployment-report${region}`,
     GET_PROJECT_DEPLOYMENT_REPORT: `getapp-project-management.get-project-deployment-report${region}`,
@@ -173,6 +178,7 @@ export const ProjectManagementTopics = {
 
 export const ProjectManagementTopicsEmit = {
     PROJECT_RELEASES_CHANGED: `getapp-project-management.project-releases-changed${region}`,
+    GIT_SYNC_COMPLETED: `getapp-project-management.git-sync-completed${region}`,
     DEPLOYMENT_REPORT_REQUESTED: `getapp-project-management.deployment-report-requested${region}`,
 }
 
@@ -232,6 +238,7 @@ export const DeviceTopics = {
     ADD_RULE_FIELD: `getapp-device.add-rule-field${region}`,
     REMOVE_RULE_FIELD: `getapp-device.remove-rule-field${region}`,
     EVALUATE_RESTRICTION: `getapp-device.evaluate-restriction${region}`,
+    GET_DEVICE_CONTEXT: `getapp-device.get-device-context${region}`,
     
     DISCOVER_DEVICE_CONTEXT_V2: `getapp-device.discover.device-context-V2${region}`,
     CHECK_HEALTH: `getapp-device.check-health${region}`, 
@@ -305,6 +312,7 @@ export const DeviceBugReportTopics = {
 
 export const SbomTopics = {
     SCAN_REQUEST: `getapp-sbom-generator.scan.request${region}`,
+    RETRY_SCAN: `getapp-sbom-generator.scan.retry${region}`,
     GET_SCAN_STATUS: `getapp-sbom-generator.scan.status${region}`,
     GET_SCAN_RESULT: `getapp-sbom-generator.scan.result${region}`,
     GET_SCANS: `getapp-sbom-generator.scan.list${region}`,
@@ -314,5 +322,6 @@ export const SbomTopics = {
 
 export const SbomTopicsEmit = {
     SCAN_FILE: `getapp-sbom-generator.scan.file${region}`,
-    SCAN_COMPLETED: `getapp-sbom-generator.scan.completed${region}`,
+    SCAN_COMPLETE: `getapp-sbom-generator.scan.complete${region}`,
+    SCAN_FAILED: `getapp-sbom-generator.scan.failed${region}`,
 } as const
