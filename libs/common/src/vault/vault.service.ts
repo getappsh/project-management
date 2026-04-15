@@ -4,6 +4,18 @@ import axios, { AxiosInstance } from 'axios';
 
 export type VaultSecretField = 'ssh_key' | 'https_password';
 
+/** Thrown when any Vault API call fails – lets callers distinguish Vault errors from user/auth errors. */
+export class VaultOperationError extends Error {
+  constructor(
+    message: string,
+    public readonly httpStatus?: number,
+    public readonly vaultErrors?: unknown,
+  ) {
+    super(message);
+    this.name = 'VaultOperationError';
+  }
+}
+
 const VAULT_REF_PREFIX = 'vault:';
 
 /**
@@ -26,14 +38,15 @@ const VAULT_REF_PREFIX = 'vault:';
 @Injectable()
 export class VaultService implements OnModuleInit {
   private readonly logger = new Logger(VaultService.name);
-  private readonly vaultAddr: string;
+  private vaultAddr: string;
   private readonly mountPath: string;
   private token: string | null = null;
   private readonly _enabled: boolean;
   private http: AxiosInstance;
 
   constructor(private readonly configService: ConfigService) {
-    // Default hostname matches both Docker Compose service name and K8s service name
+    // Default hostname matches both Docker Compose service name and K8s service name.
+    // When VAULT_ADDR is not set, falls back to localhost:8200 for running outside Docker.
     this.vaultAddr = (configService.get<string>('VAULT_ADDR') ?? 'http://vault:8200').replace(/\/$/, '');
     this.mountPath =
       configService.get<string>('VAULT_MOUNT_PATH') ?? 'project-git-sources';
@@ -58,21 +71,40 @@ export class VaultService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     if (!this._enabled) {
       this.logger.log(
-        'HashiCorp Vault integration is disabled (VAULT_ADDR not set). ' +
+        'HashiCorp Vault integration is disabled (no auth credentials set). ' +
           'Credentials will be stored as plain text.',
       );
       return;
     }
 
-    try {
-      await this.authenticate();
-      await this.ensureMount();
-      this.logger.log(
-        `HashiCorp Vault integration is active – addr: ${this.vaultAddr}, mount: ${this.mountPath}`,
-      );
-    } catch (error) {
-      this.logger.error(`Failed to initialise Vault connection: ${error.message}`);
-      throw error;
+    const explicitAddr = this.configService.get<string>('VAULT_ADDR')?.trim();
+    // Candidate list: VAULT_ADDR (if set), then vault:8200, then localhost:8200
+    const candidates = explicitAddr
+      ? [explicitAddr.replace(/\/$/, '')]
+      : ['http://vault:8200', 'http://localhost:8200'];
+
+    for (const addr of candidates) {
+      this.vaultAddr = addr;
+      this.http = axios.create({ baseURL: addr });
+      try {
+        await this.authenticate();
+        await this.ensureMount();
+        this.logger.log(
+          `HashiCorp Vault integration is active – addr: ${this.vaultAddr}, mount: ${this.mountPath}`,
+        );
+        return;
+      } catch (error) {
+        const isNetworkError = error?.code === 'ENOTFOUND' || error?.code === 'ECONNREFUSED';
+        if (isNetworkError && addr !== candidates[candidates.length - 1]) {
+          this.logger.warn(`Vault not reachable at ${addr} (${error.code}), trying next candidate…`);
+          continue;
+        }
+        this.logger.error(
+          `Failed to initialise Vault connection at ${addr}: ${error.message}` +
+            (error.response ? ` | HTTP ${error.response.status}: ${JSON.stringify(error.response.data)}` : ''),
+        );
+        throw error;
+      }
     }
   }
 
@@ -97,11 +129,19 @@ export class VaultService implements OnModuleInit {
     const existing = (await this.fetchRawSecrets(gitSourceId)) ?? {};
     existing[field] = value;
 
-    await this.http.post(
-      `/v1/${this.mountPath}/data/${gitSourceId}`,
-      { data: existing },
-      { headers: this.authHeaders() },
-    );
+    try {
+      await this.http.post(
+        `/v1/${this.mountPath}/data/${gitSourceId}`,
+        { data: existing },
+        { headers: this.authHeaders() },
+      );
+    } catch (error) {
+      const status = error.response?.status;
+      const body = error.response?.data;
+      const detail = status ? `HTTP ${status} – ${JSON.stringify(body)}` : error.message;
+      this.logger.error(`[Vault] storeSecret failed for git source ${gitSourceId}, field '${field}': ${detail}`);
+      throw new VaultOperationError(`Vault storeSecret failed: ${detail}`, status, body);
+    }
 
     return `${VAULT_REF_PREFIX}${this.mountPath}/${gitSourceId}#${field}`;
   }
@@ -251,7 +291,11 @@ export class VaultService implements OnModuleInit {
       return (response.data?.data?.data as Record<string, string>) ?? null;
     } catch (error) {
       if (error.response?.status === 404) return null;
-      throw error;
+      const status = error.response?.status;
+      const body = error.response?.data;
+      const detail = status ? `HTTP ${status} – ${JSON.stringify(body)}` : error.message;
+      this.logger.error(`[Vault] fetchRawSecrets failed for git source ${gitSourceId}: ${detail}`);
+      throw new VaultOperationError(`Vault fetchRawSecrets failed: ${detail}`, status, body);
     }
   }
 

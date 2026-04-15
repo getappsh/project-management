@@ -37,6 +37,7 @@ import { lastValueFrom } from 'rxjs';
 import { randomBytes } from 'crypto';
 import { GitSyncService } from './git-sync.service';
 import { VaultService } from '@app/common/vault';
+import { VaultOperationError } from '@app/common/vault';
 
 
 @Injectable()
@@ -317,21 +318,29 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       // If Vault is enabled, move plain-text credentials to Vault and store refs
       if (this.vaultService.isEnabled) {
         let vaultUpdated = false;
-        if (project.gitSource.sshKey && !this.vaultService.isVaultRef(project.gitSource.sshKey)) {
-          project.gitSource.sshKey = await this.vaultService.storeSecret(
-            project.gitSource.id,
-            'ssh_key',
-            project.gitSource.sshKey,
-          );
-          vaultUpdated = true;
-        }
-        if (project.gitSource.httpsPassword && !this.vaultService.isVaultRef(project.gitSource.httpsPassword)) {
-          project.gitSource.httpsPassword = await this.vaultService.storeSecret(
-            project.gitSource.id,
-            'https_password',
-            project.gitSource.httpsPassword,
-          );
-          vaultUpdated = true;
+        try {
+          if (project.gitSource.sshKey && !this.vaultService.isVaultRef(project.gitSource.sshKey)) {
+            project.gitSource.sshKey = await this.vaultService.storeSecret(
+              project.gitSource.id,
+              'ssh_key',
+              project.gitSource.sshKey,
+            );
+            vaultUpdated = true;
+          }
+          if (project.gitSource.httpsPassword && !this.vaultService.isVaultRef(project.gitSource.httpsPassword)) {
+            project.gitSource.httpsPassword = await this.vaultService.storeSecret(
+              project.gitSource.id,
+              'https_password',
+              project.gitSource.httpsPassword,
+            );
+            vaultUpdated = true;
+          }
+        } catch (error) {
+          if (error instanceof VaultOperationError) {
+            this.logger.error(`[Vault] Failed to store git credentials in Vault for project ${project.id}. This is a Vault infrastructure error, not a user permissions issue. Detail: ${error.message}`);
+            throw new InternalServerErrorException('Failed to securely store git credentials. This is a server-side Vault configuration issue — please contact your administrator.');
+          }
+          throw error;
         }
         if (vaultUpdated) {
           project.gitSource = await this.gitSourceRepo.save(project.gitSource);
@@ -402,46 +411,54 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
         gitSource.getappFilePath = dto.gitGetappFilePath !== undefined ? dto.gitGetappFilePath : gitSource.getappFilePath;
 
         // SSH key and HTTPS credentials are mutually exclusive
-        if (dto.gitSshKey !== undefined) {
-          if (dto.gitSshKey) {
-            // Clear any existing Vault secret for the old credential type
-            if (this.vaultService.isEnabled && this.vaultService.isVaultRef(gitSource.httpsPassword)) {
-              await this.vaultService.deleteSecret(gitSource.id, 'https_password');
-            }
-            gitSource.sshKey = this.vaultService.isEnabled
-              ? await this.vaultService.storeSecret(gitSource.id, 'ssh_key', dto.gitSshKey)
-              : dto.gitSshKey;
-            gitSource.httpsUsername = null;
-            gitSource.httpsPassword = null;
-          } else {
-            // Clearing SSH key
-            if (this.vaultService.isEnabled && this.vaultService.isVaultRef(gitSource.sshKey)) {
-              await this.vaultService.deleteSecret(gitSource.id, 'ssh_key');
-            }
-            gitSource.sshKey = null;
-          }
-        } else if (dto.gitHttpsUsername !== undefined || dto.gitHttpsPassword !== undefined) {
-          gitSource.httpsUsername = dto.gitHttpsUsername !== undefined ? dto.gitHttpsUsername : gitSource.httpsUsername;
-          if (dto.gitHttpsPassword !== undefined) {
-            if (dto.gitHttpsPassword) {
-              gitSource.httpsPassword = this.vaultService.isEnabled
-                ? await this.vaultService.storeSecret(gitSource.id, 'https_password', dto.gitHttpsPassword)
-                : dto.gitHttpsPassword;
-            } else {
-              // Clearing HTTPS password
+        try {
+          if (dto.gitSshKey !== undefined) {
+            if (dto.gitSshKey) {
+              // Clear any existing Vault secret for the old credential type
               if (this.vaultService.isEnabled && this.vaultService.isVaultRef(gitSource.httpsPassword)) {
                 await this.vaultService.deleteSecret(gitSource.id, 'https_password');
               }
+              gitSource.sshKey = this.vaultService.isEnabled
+                ? await this.vaultService.storeSecret(gitSource.id, 'ssh_key', dto.gitSshKey)
+                : dto.gitSshKey;
+              gitSource.httpsUsername = null;
               gitSource.httpsPassword = null;
+            } else {
+              // Clearing SSH key
+              if (this.vaultService.isEnabled && this.vaultService.isVaultRef(gitSource.sshKey)) {
+                await this.vaultService.deleteSecret(gitSource.id, 'ssh_key');
+              }
+              gitSource.sshKey = null;
+            }
+          } else if (dto.gitHttpsUsername !== undefined || dto.gitHttpsPassword !== undefined) {
+            gitSource.httpsUsername = dto.gitHttpsUsername !== undefined ? dto.gitHttpsUsername : gitSource.httpsUsername;
+            if (dto.gitHttpsPassword !== undefined) {
+              if (dto.gitHttpsPassword) {
+                gitSource.httpsPassword = this.vaultService.isEnabled
+                  ? await this.vaultService.storeSecret(gitSource.id, 'https_password', dto.gitHttpsPassword)
+                  : dto.gitHttpsPassword;
+              } else {
+                // Clearing HTTPS password
+                if (this.vaultService.isEnabled && this.vaultService.isVaultRef(gitSource.httpsPassword)) {
+                  await this.vaultService.deleteSecret(gitSource.id, 'https_password');
+                }
+                gitSource.httpsPassword = null;
+              }
+            }
+            if (gitSource.httpsUsername || gitSource.httpsPassword) {
+              // Clear any stale SSH key vault entry when switching to HTTPS
+              if (this.vaultService.isEnabled && this.vaultService.isVaultRef(gitSource.sshKey)) {
+                await this.vaultService.deleteSecret(gitSource.id, 'ssh_key');
+              }
+              gitSource.sshKey = null;
             }
           }
-          if (gitSource.httpsUsername || gitSource.httpsPassword) {
-            // Clear any stale SSH key vault entry when switching to HTTPS
-            if (this.vaultService.isEnabled && this.vaultService.isVaultRef(gitSource.sshKey)) {
-              await this.vaultService.deleteSecret(gitSource.id, 'ssh_key');
-            }
-            gitSource.sshKey = null;
+        } catch (error) {
+          if (error instanceof VaultOperationError) {
+            this.logger.error(`[Vault] Failed to store git credentials in Vault for project ${dto.projectId}. This is a Vault infrastructure error, not a user permissions issue. Detail: ${error.message}`);
+            throw new InternalServerErrorException('Failed to securely store git credentials. This is a server-side Vault configuration issue — please contact your administrator.');
           }
+          throw error;
         }
 
         // Generate webhook URL once when setting up git for the first time
