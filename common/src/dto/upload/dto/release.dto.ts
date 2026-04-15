@@ -60,8 +60,8 @@ export class ReleasePolicyDto {
   @ApiProperty({ description: 'Whether the policy is active' })
   isActive: boolean;
 
-  @ApiProperty({ description: 'Whether this policy should be pushed to agents', default: false })
-  isPush: boolean;
+  @ApiProperty({ description: 'Whether this policy should be pushed to agents', default: false, required: false })
+  isPush?: boolean;
 
   @ApiProperty({ description: 'The policy rule definition conforming to rule engine schema' })
   rule: any;
