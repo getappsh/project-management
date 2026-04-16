@@ -25,8 +25,8 @@ const VAULT_REF_PREFIX = 'vault:';
  * are stored in Vault KV v2 instead of plain text in the database.
  *
  * Database fields will contain a Vault reference in the format:
- *   vault:{mountPath}/{gitSourceId}#{field}
- * e.g.  vault:project-git-sources/7#ssh_key
+ *   vault:{mountPath}/{secretName}#{field}
+ * e.g.  vault:getapp-secrets/project-7-git-credentials#ssh_key
  *
  * If VAULT_ADDR is not set, the service is disabled and all values pass through unchanged,
  * maintaining full backwards compatibility.
@@ -49,11 +49,11 @@ export class VaultService implements OnModuleInit {
     // When VAULT_ADDR is not set, falls back to localhost:8200 for running outside Docker.
     this.vaultAddr = (configService.get<string>('VAULT_ADDR') ?? 'http://vault:8200').replace(/\/$/, '');
     this.mountPath =
-      configService.get<string>('VAULT_MOUNT_PATH') ?? 'getapp-projects-git-credentials';
+      configService.get<string>('VAULT_MOUNT_PATH') ?? 'getapp-secrets';
 
     // Vault is enabled only when auth credentials are present.
     // This means a fresh install with no env vars set runs in plain-text legacy mode.
-    const hasToken = !!configService.get<string>('VAULT_TOKEN')?.trim();
+    const hasToken = !!configService.get<string>('VAULT_TOKEN')?.trim() || !!configService.get<string>('VAULT_DEV_ROOT_TOKEN_ID')?.trim();
     const hasAppRole =
       !!configService.get<string>('VAULT_ROLE_ID')?.trim() &&
       !!configService.get<string>('VAULT_SECRET_ID')?.trim();
@@ -113,27 +113,32 @@ export class VaultService implements OnModuleInit {
   // ---------------------------------------------------------------------------
 
   /**
-   * Store a credential field for a git source in Vault.
-   * Any other fields already stored for the same git source are preserved.
+   * Store a credential field in Vault under the given secret name.
+   * Any other fields already stored at that path are preserved.
    *
+   * @param secretName - The Vault path segment identifying this secret
+   *                     (e.g. `project-7-git-credentials`).
+   * @param metadata   - Optional key/value pairs written to the KV v2 custom metadata
+   *                     (e.g. `{ projectName: 'my-project' }`).
    * @returns The Vault reference string to persist in the database column.
    */
   async storeSecret(
-    gitSourceId: number,
+    secretName: string,
     field: VaultSecretField,
     value: string,
+    metadata?: Record<string, string>,
   ): Promise<string> {
-    if(!gitSourceId)      throw new Error('gitSourceId is required to store a secret in Vault');
+    if (!secretName) throw new Error('secretName is required to store a secret in Vault');
 
     this.assertEnabled();
 
     // Merge with existing fields so we never lose sibling secrets
-    const existing = (await this.fetchRawSecrets(gitSourceId)) ?? {};
+    const existing = (await this.fetchRawSecrets(secretName)) ?? {};
     existing[field] = value;
 
     try {
       await this.http.post(
-        `/v1/${this.mountPath}/data/${gitSourceId}`,
+        `/v1/${this.mountPath}/data/${secretName}`,
         { data: existing },
         { headers: this.authHeaders() },
       );
@@ -141,21 +146,37 @@ export class VaultService implements OnModuleInit {
       const status = error.response?.status;
       const body = error.response?.data;
       const detail = status ? `HTTP ${status} – ${JSON.stringify(body)}` : error.message;
-      this.logger.error(`[Vault] storeSecret failed for git source ${gitSourceId}, field '${field}': ${detail}`);
+      this.logger.error(`[Vault] storeSecret failed for '${secretName}', field '${field}': ${detail}`);
       throw new VaultOperationError(`Vault storeSecret failed: ${detail}`, status, body);
     }
 
-    return `${VAULT_REF_PREFIX}${this.mountPath}/${gitSourceId}#${field}`;
+    if (metadata && Object.keys(metadata).length > 0) {
+      try {
+        await this.http.post(
+          `/v1/${this.mountPath}/metadata/${secretName}`,
+          { custom_metadata: metadata },
+          { headers: this.authHeaders() },
+        );
+      } catch (error) {
+        // Metadata write failure is non-fatal; log a warning and continue.
+        const msg = error instanceof Error ? error.message : String(error);
+        this.logger.warn(
+          `[Vault] Could not write custom metadata for '${secretName}': ${msg}`,
+        );
+      }
+    }
+
+    return `${VAULT_REF_PREFIX}${this.mountPath}/${secretName}#${field}`;
   }
 
   /**
    * Remove a specific credential field from Vault.
    * If no fields remain, the entire secret path is deleted.
    */
-  async deleteSecret(gitSourceId: number, field: VaultSecretField): Promise<void> {
+  async deleteSecret(secretName: string, field: VaultSecretField): Promise<void> {
     if (!this._enabled) return;
 
-    const existing = await this.fetchRawSecrets(gitSourceId);
+    const existing = await this.fetchRawSecrets(secretName);
     if (!existing) return;
 
     delete existing[field];
@@ -163,17 +184,17 @@ export class VaultService implements OnModuleInit {
     if (Object.keys(existing).length === 0) {
       // Remove the entire secret path
       await this.http
-        .delete(`/v1/${this.mountPath}/metadata/${gitSourceId}`, {
+        .delete(`/v1/${this.mountPath}/metadata/${secretName}`, {
           headers: this.authHeaders(),
         })
         .catch((err) => {
           this.logger.warn(
-            `Could not delete Vault metadata for git source ${gitSourceId}: ${err.message}`,
+            `Could not delete Vault metadata for '${secretName}': ${err.message}`,
           );
         });
     } else {
       await this.http.post(
-        `/v1/${this.mountPath}/data/${gitSourceId}`,
+        `/v1/${this.mountPath}/data/${secretName}`,
         { data: existing },
         { headers: this.authHeaders() },
       );
@@ -226,7 +247,7 @@ export class VaultService implements OnModuleInit {
   // ---------------------------------------------------------------------------
 
   private async authenticate(): Promise<void> {
-    const staticToken = this.configService.get<string>('VAULT_TOKEN')?.trim();
+    const staticToken = this.configService.get<string>('VAULT_TOKEN')?.trim() || this.configService.get<string>('VAULT_DEV_ROOT_TOKEN_ID')?.trim();
     if (staticToken) {
       this.token = staticToken;
       this.logger.debug('Vault: using static token authentication');
@@ -283,11 +304,11 @@ export class VaultService implements OnModuleInit {
   }
 
   private async fetchRawSecrets(
-    gitSourceId: number,
+    secretName: string,
   ): Promise<Record<string, string> | null> {
     try {
       const response = await this.http.get(
-        `/v1/${this.mountPath}/data/${gitSourceId}`,
+        `/v1/${this.mountPath}/data/${secretName}`,
         { headers: this.authHeaders() },
       );
       return (response.data?.data?.data as Record<string, string>) ?? null;
@@ -296,7 +317,7 @@ export class VaultService implements OnModuleInit {
       const status = error.response?.status;
       const body = error.response?.data;
       const detail = status ? `HTTP ${status} – ${JSON.stringify(body)}` : error.message;
-      this.logger.error(`[Vault] fetchRawSecrets failed for git source ${gitSourceId}: ${detail}`);
+      this.logger.error(`[Vault] fetchRawSecrets failed for '${secretName}': ${detail}`);
       throw new VaultOperationError(`Vault fetchRawSecrets failed: ${detail}`, status, body);
     }
   }

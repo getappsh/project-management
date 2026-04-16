@@ -38,6 +38,7 @@ import { randomBytes } from 'crypto';
 import { GitSyncService } from './git-sync.service';
 import { VaultService } from '@app/common/vault';
 import { VaultOperationError } from '@app/common/vault';
+import { gitCredentialsSecretName } from './utils/vault-secret-names';
 
 
 @Injectable()
@@ -315,11 +316,12 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
         project.gitSource = await this.gitSourceRepo.save(gitSource);
 
         try {
+          const vaultMetadata = { projectName: project.name };
           if (rawSshKey) {
-            project.gitSource.sshKey = await this.vaultService.storeSecret(project.gitSource.id, 'ssh_key', rawSshKey);
+            project.gitSource.sshKey = await this.vaultService.storeSecret(gitCredentialsSecretName(project.gitSource.id), 'ssh_key', rawSshKey, vaultMetadata);
           }
           if (rawHttpsPassword) {
-            project.gitSource.httpsPassword = await this.vaultService.storeSecret(project.gitSource.id, 'https_password', rawHttpsPassword);
+            project.gitSource.httpsPassword = await this.vaultService.storeSecret(gitCredentialsSecretName(project.gitSource.id), 'https_password', rawHttpsPassword, vaultMetadata);
           }
           if (rawSshKey || rawHttpsPassword) {
             project.gitSource = await this.gitSourceRepo.save(project.gitSource);
@@ -448,24 +450,25 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
           try {
             // Delete stale Vault entries when credential type switches
             if (incomingSshKey && this.vaultService.isVaultRef(isNew ? null : project.gitSource?.httpsPassword ?? gitSource.httpsPassword)) {
-              await this.vaultService.deleteSecret((isNew ? project.gitSource : gitSource).id, 'https_password');
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource : gitSource).id), 'https_password');
             }
             if (incomingHttpsPass && this.vaultService.isVaultRef(isNew ? null : project.gitSource?.sshKey ?? gitSource.sshKey)) {
-              await this.vaultService.deleteSecret((isNew ? project.gitSource : gitSource).id, 'ssh_key');
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource : gitSource).id), 'ssh_key');
             }
             if (incomingSshKey === null && this.vaultService.isVaultRef(isNew ? project.gitSource.sshKey : gitSource.sshKey)) {
-              await this.vaultService.deleteSecret((isNew ? project.gitSource : gitSource).id, 'ssh_key');
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource : gitSource).id), 'ssh_key');
             }
             if (incomingHttpsPass === null && this.vaultService.isVaultRef(isNew ? project.gitSource.httpsPassword : gitSource.httpsPassword)) {
-              await this.vaultService.deleteSecret((isNew ? project.gitSource : gitSource).id, 'https_password');
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource : gitSource).id), 'https_password');
             }
 
             const entityToUpdate = isNew ? project.gitSource : gitSource;
+            const vaultMetadata = { projectName: project.name };
             if (incomingSshKey) {
-              entityToUpdate.sshKey = await this.vaultService.storeSecret(entityToUpdate.id, 'ssh_key', incomingSshKey);
+              entityToUpdate.sshKey = await this.vaultService.storeSecret(gitCredentialsSecretName(entityToUpdate.id), 'ssh_key', incomingSshKey, vaultMetadata);
             }
             if (incomingHttpsPass) {
-              entityToUpdate.httpsPassword = await this.vaultService.storeSecret(entityToUpdate.id, 'https_password', incomingHttpsPass);
+              entityToUpdate.httpsPassword = await this.vaultService.storeSecret(gitCredentialsSecretName(entityToUpdate.id), 'https_password', incomingHttpsPass, vaultMetadata);
             }
           } catch (error) {
             if (error instanceof VaultOperationError) {

@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ProjectGitSourceEntity } from '@app/common/database/entities';
 import { VaultService } from '@app/common/vault';
+import { gitCredentialsSecretName } from './utils/vault-secret-names';
 
 /**
  * Runs once on application startup.
@@ -45,12 +46,13 @@ export class VaultCredentialsMigrationService implements OnApplicationBootstrap 
   }
 
   private async migrateCredentials(): Promise<void> {
-    const gitSources = await this.gitSourceRepo.find();
+    const gitSources = await this.gitSourceRepo.find({ relations: ['project'] });
 
     let migrated = 0;
 
     for (const gitSource of gitSources) {
       let updated = false;
+      const vaultMetadata = gitSource.project?.name ? { projectName: gitSource.project.name } : undefined;
 
       // Migrate SSH key
       if (gitSource.sshKey && !this.vaultService.isVaultRef(gitSource.sshKey)) {
@@ -58,9 +60,10 @@ export class VaultCredentialsMigrationService implements OnApplicationBootstrap 
           `Migrating plain-text SSH key to Vault for git source id=${gitSource.id}`,
         );
         gitSource.sshKey = await this.vaultService.storeSecret(
-          gitSource.id,
+          gitCredentialsSecretName(gitSource.id),
           'ssh_key',
           gitSource.sshKey,
+          vaultMetadata,
         );
         updated = true;
       }
@@ -74,9 +77,10 @@ export class VaultCredentialsMigrationService implements OnApplicationBootstrap 
           `Migrating plain-text HTTPS password to Vault for git source id=${gitSource.id}`,
         );
         gitSource.httpsPassword = await this.vaultService.storeSecret(
-          gitSource.id,
+          gitCredentialsSecretName(gitSource.id),
           'https_password',
           gitSource.httpsPassword,
+          vaultMetadata,
         );
         updated = true;
       }
