@@ -49,7 +49,7 @@ export class VaultService implements OnModuleInit {
     // When VAULT_ADDR is not set, falls back to localhost:8200 for running outside Docker.
     this.vaultAddr = (configService.get<string>('VAULT_ADDR') ?? 'http://vault:8200').replace(/\/$/, '');
     this.mountPath =
-      configService.get<string>('VAULT_MOUNT_PATH') ?? 'project-git-sources';
+      configService.get<string>('VAULT_MOUNT_PATH') ?? 'getapp-projects-git-credentials';
 
     // Vault is enabled only when auth credentials are present.
     // This means a fresh install with no env vars set runs in plain-text legacy mode.
@@ -123,6 +123,8 @@ export class VaultService implements OnModuleInit {
     field: VaultSecretField,
     value: string,
   ): Promise<string> {
+    if(!gitSourceId)      throw new Error('gitSourceId is required to store a secret in Vault');
+
     this.assertEnabled();
 
     // Merge with existing fields so we never lose sibling secrets
