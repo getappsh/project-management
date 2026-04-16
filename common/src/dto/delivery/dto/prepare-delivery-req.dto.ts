@@ -1,6 +1,6 @@
 import { ItemTypeEnum } from "@app/common/database/entities";
 import { ApiProperty } from "@nestjs/swagger";
-import { IsEnum, IsNotEmpty, IsString } from "class-validator";
+import { IsEnum, IsNotEmpty, IsOptional, IsString } from "class-validator";
 
 export class PrepareDeliveryReqDto{
 
@@ -17,6 +17,11 @@ export class PrepareDeliveryReqDto{
   @ApiProperty({enum: ItemTypeEnum})
   @IsEnum(ItemTypeEnum)
   itemType: ItemTypeEnum
+
+  @ApiProperty({ required: false, description: 'Custom absolute path for downloaded files. When provided, files are saved to this directory instead of the default.' })
+  @IsString()
+  @IsOptional()
+  downloadFolder?: string;
 
   toString(){
     return JSON.stringify(this);
