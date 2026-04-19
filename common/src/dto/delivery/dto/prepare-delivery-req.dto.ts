@@ -18,7 +18,13 @@ export class PrepareDeliveryReqDto{
   @IsEnum(ItemTypeEnum)
   itemType: ItemTypeEnum
 
-  @ApiProperty({ required: false, description: 'Custom absolute path for downloaded files. When provided, files are saved to this directory instead of the default.' })
+  /**
+   * Custom absolute path for downloaded files.
+   * Used only for A2A compatibility — the downstream agent (e.g. GetMap)
+   * passes its local storage path through the intermediary agent's CORE API.
+   * Not consumed by the server itself at this time.
+   */
+  @ApiProperty({ required: false, description: 'Custom download folder path — used for agent CORE A2A relay, not consumed by the server.' })
   @IsString()
   @IsOptional()
   downloadFolder?: string;
