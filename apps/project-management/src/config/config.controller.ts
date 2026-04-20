@@ -89,6 +89,11 @@ export class ConfigController {
     return this.configService.getConfigMapAssociations(payload.configMapProjectIdentifier);
   }
 
+  @MessagePattern(ProjectManagementTopics.CONFIG_GET_CONFIG_MAPS_FOR_PROJECT)
+  getConfigMapsForProject(@RpcPayload() payload: { projectIdentifier: number | string }) {
+    return this.configService.getConfigMapsForProject(payload.projectIdentifier);
+  }
+
   // ---------------------------------------------------------------------------
   // Agent endpoint – get final device config
   // ---------------------------------------------------------------------------

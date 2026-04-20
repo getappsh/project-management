@@ -228,6 +228,27 @@ export class GetConfigMapAssociationsDto {
   configMapProjectIdentifier: number | string;
 }
 
+/** A ConfigMap project that references a given CONFIG project's device type */
+export class ConfigMapForProjectDto {
+  @ApiProperty({ description: 'ConfigMap project ID' })
+  configMapProjectId: number;
+
+  @ApiProperty({ description: 'ConfigMap project name' })
+  configMapProjectName: string;
+
+  @ApiProperty({ description: 'Association ID' })
+  associationId: number;
+
+  @ApiProperty({ description: 'Device type ID matched, or null for global associations', required: false })
+  deviceTypeId: number | null;
+}
+
+export class GetConfigMapsForProjectDto {
+  @ApiProperty({ description: 'CONFIG project identifier (id or name)' })
+  @IsNotEmpty()
+  projectIdentifier: number | string;
+}
+
 // ---------------------------------------------------------------------------
 // Agent / device config retrieval
 // ---------------------------------------------------------------------------
