@@ -85,8 +85,8 @@ export class ConfigController {
   }
 
   @MessagePattern(ProjectManagementTopics.CONFIG_GET_MAP_ASSOCIATIONS)
-  getConfigMapAssociations(@RpcPayload() identifier: number | string) {
-    return this.configService.getConfigMapAssociations(identifier);
+  getConfigMapAssociations(@RpcPayload() payload: { configMapProjectIdentifier: number | string }) {
+    return this.configService.getConfigMapAssociations(payload.configMapProjectIdentifier);
   }
 
   // ---------------------------------------------------------------------------
