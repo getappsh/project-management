@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan } from 'typeorm';
-import { ProjectEntity } from '@app/common/database/entities';
+import { ProjectEntity, ProjectType } from '@app/common/database/entities';
 import { 
   GitSyncResultDto, 
   GitSyncStatus, 
@@ -22,6 +22,8 @@ import { exec } from 'child_process';
 import { ClsService } from 'nestjs-cls';
 import { ProjectManagementService } from './project-management.service';
 import { VaultService } from '@app/common/vault';
+import { ConfigService as AppConfigService } from './config/config.service';
+import * as yaml from 'js-yaml';
 
 const execAsync = promisify(exec);
 
@@ -41,6 +43,8 @@ export class GitSyncService {
     @Inject(forwardRef(() => ProjectManagementService))
     private readonly projectManagementService: ProjectManagementService,
     private readonly vaultService: VaultService,
+    @Inject(forwardRef(() => AppConfigService))
+    private readonly appConfigService: AppConfigService,
   ) {}
 
   /**
@@ -102,6 +106,20 @@ export class GitSyncService {
         }
 
         result.version = getappConfig.version;
+
+        // For CONFIG / CONFIG_MAP projects, sync groups from YAML files and
+        // skip the normal release import pipeline (there are no artifacts).
+        if (
+          project.projectType === ProjectType.CONFIG ||
+          project.projectType === ProjectType.CONFIG_MAP
+        ) {
+          await this.syncConfigGroupsFromGetapp(project.id, repoDir, getappConfig);
+          result.status = GitSyncStatus.SUCCESS;
+          result.message = `Config groups synced from git (version ${getappConfig.version})`;
+          result.releaseCreated = false;
+          this.emitSyncCompletedEvent(result);
+          return result;
+        }
 
         // Check if release already exists
         const releaseExists = await this.checkReleaseExists({
@@ -195,6 +213,56 @@ export class GitSyncService {
       p.gitSource.cloneInterval > 0 &&
       !this.syncInProgress.has(p.id)
     );
+  }
+
+  /**
+   * For CONFIG / CONFIG_MAP projects: parse config groups from the .getapp file
+   * and sync each group's key-value entries into the current draft revision.
+   *
+   * Each group in `getappConfig.configGroups` may declare a `gitFilePath` pointing
+   * to a YAML file in the cloned repo. If set, entries are read from that file.
+   * Otherwise the group entry list in the .getapp JSON itself is used.
+   *
+   * After syncing all groups the revision is applied automatically so the new
+   * config becomes active immediately.
+   */
+  private async syncConfigGroupsFromGetapp(
+    projectId: number,
+    repoDir: string,
+    getappConfig: ImportReleaseDto,
+  ): Promise<void> {
+    const groups = getappConfig.configGroups ?? [];
+    if (groups.length === 0) {
+      this.logger.debug(`No configGroups defined in .getapp file for project ${projectId}`);
+      return;
+    }
+
+    for (const groupDef of groups) {
+      const { name, gitFilePath, isGlobal } = groupDef;
+      let entries: Record<string, string> = {};
+
+      if (gitFilePath) {
+        const fullPath = path.join(repoDir, gitFilePath);
+        try {
+          const raw = await fs.promises.readFile(fullPath, 'utf-8');
+          const parsed = yaml.load(raw);
+          if (parsed && typeof parsed === 'object') {
+            entries = Object.fromEntries(
+              Object.entries(parsed as Record<string, unknown>).map(([k, v]) => [k, String(v)]),
+            );
+          }
+        } catch (err) {
+          this.logger.warn(`Could not read YAML file '${gitFilePath}' for group '${name}': ${err.message}`);
+          continue;
+        }
+      }
+
+      await this.appConfigService.syncGroupFromGitYaml(projectId, name, isGlobal ?? false, gitFilePath ?? '', entries);
+    }
+
+    // Apply the draft revision so the new config goes live
+    await this.appConfigService.applyRevision({ projectIdentifier: projectId, appliedBy: 'git-sync' });
+    this.logger.log(`Config groups synced and revision applied for project ${projectId}`);
   }
 
   /**

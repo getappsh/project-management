@@ -1,5 +1,5 @@
 import { DatabaseModule, UploadJwtConfigService,  } from '@app/common';
-import { MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity, PlatformEntity, LabelEntity } from '@app/common/database/entities';
+import { MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity, PlatformEntity, LabelEntity, ConfigRevisionEntity, ConfigGroupEntity, ConfigEntryEntity, ConfigMapAssociationEntity, DeviceTypeEntity } from '@app/common/database/entities';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -18,6 +18,10 @@ import { MicroserviceModule, MicroserviceName, MicroserviceType } from '@app/com
 import { SafeCronModule } from '@app/common/safe-cron';
 import { VaultModule } from '@app/common/vault';
 import { VaultCredentialsMigrationService } from './vault-credentials-migration.service';
+import { ConfigService as AppConfigService } from './config/config.service';
+import { ConfigController } from './config/config.controller';
+import { ConfigCacheService } from './config/config-cache.service';
+import { S3Module } from '@app/common/AWS/s3.module';
 
 @Module({
   imports: [
@@ -31,7 +35,8 @@ import { VaultCredentialsMigrationService } from './vault-credentials-migration.
     TypeOrmModule.forFeature([
       MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, 
       RegulationEntity, RegulationTypeEntity, PlatformEntity,
-      DeviceEntity, ProjectTokenEntity, DocEntity, LabelEntity
+      DeviceEntity, ProjectTokenEntity, DocEntity, LabelEntity,
+      ConfigRevisionEntity, ConfigGroupEntity, ConfigEntryEntity, ConfigMapAssociationEntity, DeviceTypeEntity,
     ]),
     OidcModule.forRoot(),
     MicroserviceModule.register({
@@ -41,8 +46,9 @@ import { VaultCredentialsMigrationService } from './vault-credentials-migration.
     }),
     SafeCronModule,
     VaultModule,
+    S3Module,
   ],
-  controllers: [ProjectManagementController],
+  controllers: [ProjectManagementController, ConfigController],
   providers: [
     ProjectManagementService, 
     RegulationService,
@@ -50,6 +56,8 @@ import { VaultCredentialsMigrationService } from './vault-credentials-migration.
     GitSyncScheduler,
     SeederService,
     VaultCredentialsMigrationService,
+    AppConfigService,
+    ConfigCacheService,
     {
       provide: PROJECT_ACCESS_SERVICE,
       useExisting: ProjectManagementService
