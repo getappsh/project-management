@@ -285,7 +285,7 @@ export class GitSyncService {
   /**
    * Set up SSH key for git operations in an isolated directory
    * This ensures the host machine's ~/.ssh is never touched or affected
-   * @param sshKey - Base64 encoded SSH private key
+   * @param sshKey - SSH private key (PEM format, plain text)
    * @param sshDir - Isolated directory for SSH configuration (not host ~/.ssh)
    * @returns Path to the SSH key file
    */
@@ -296,15 +296,13 @@ export class GitSyncService {
     const keyPath = path.join(sshDir, 'id_rsa');
     const knownHostsPath = path.join(sshDir, 'known_hosts');
 
-    // Decode and write SSH private key with secure permissions.
     // Normalize line endings (strip \r) and ensure a trailing newline —
     // OpenSSH (via libcrypto) rejects keys that are missing either.
-    let decodedKey = Buffer.from(sshKey, 'base64').toString('utf-8');
-    decodedKey = decodedKey.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    if (!decodedKey.endsWith('\n')) {
-      decodedKey += '\n';
+    let keyContent = sshKey.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    if (!keyContent.endsWith('\n')) {
+      keyContent += '\n';
     }
-    await fs.promises.writeFile(keyPath, decodedKey, { mode: 0o600 });
+    await fs.promises.writeFile(keyPath, keyContent, { mode: 0o600 });
 
     // Create empty known_hosts file (will be populated during clone)
     await fs.promises.writeFile(knownHostsPath, '', { mode: 0o600 });
