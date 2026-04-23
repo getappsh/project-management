@@ -296,8 +296,14 @@ export class GitSyncService {
     const keyPath = path.join(sshDir, 'id_rsa');
     const knownHostsPath = path.join(sshDir, 'known_hosts');
 
-    // Decode and write SSH private key with secure permissions
-    const decodedKey = Buffer.from(sshKey, 'base64').toString('utf-8');
+    // Decode and write SSH private key with secure permissions.
+    // Normalize line endings (strip \r) and ensure a trailing newline —
+    // OpenSSH (via libcrypto) rejects keys that are missing either.
+    let decodedKey = Buffer.from(sshKey, 'base64').toString('utf-8');
+    decodedKey = decodedKey.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    if (!decodedKey.endsWith('\n')) {
+      decodedKey += '\n';
+    }
     await fs.promises.writeFile(keyPath, decodedKey, { mode: 0o600 });
 
     // Create empty known_hosts file (will be populated during clone)
