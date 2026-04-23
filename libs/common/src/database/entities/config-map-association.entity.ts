@@ -7,8 +7,10 @@ import { DeviceTypeEntity } from './device-type.entity';
  * every device belonging to those device types automatically receives the
  * configMap's groups as part of its merged config.
  *
- * `deviceTypeId` is nullable to allow future association strategies (e.g. by OS).
- * When null the association matches all devices (a "global" configMap).
+ * Each row can represent:
+ *  - device-type rule:  deviceTypeId set, configProjectId null  → applies to all devices of that type
+ *  - direct link:       configProjectId set, deviceTypeId null  → applies to this specific CONFIG project
+ *  - global:            both null                                → applies to all CONFIG projects
  */
 @Entity('config_map_association')
 export class ConfigMapAssociationEntity {
@@ -22,16 +24,24 @@ export class ConfigMapAssociationEntity {
   @Column({ name: 'config_map_project_id' })
   configMapProjectId: number;
 
-  /**
-   * When set, the configMap is applied only to devices of this type.
-   * Future: additional columns (e.g. `osType`) may narrow the match further.
-   */
   @ManyToOne(() => DeviceTypeEntity, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'device_type_id' })
   deviceType: DeviceTypeEntity | null;
 
   @Column({ name: 'device_type_id', nullable: true })
   deviceTypeId: number | null;
+
+  /**
+   * When set this row is a direct link between this CONFIG_MAP project and a specific
+   * CONFIG project. Auto-populated when a device-type association is created (for
+   * existing devices of that type) or when a new device CONFIG project is created.
+   */
+  @ManyToOne(() => ProjectEntity, { nullable: true, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'config_project_id' })
+  configProject: ProjectEntity | null;
+
+  @Column({ name: 'config_project_id', nullable: true })
+  configProjectId: number | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

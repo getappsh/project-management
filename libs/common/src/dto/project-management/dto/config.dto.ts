@@ -203,6 +203,9 @@ export class ConfigMapAssociationDto {
 
   @ApiProperty({ required: false })
   deviceTypeId: number | null;
+
+  @ApiProperty({ required: false, description: 'Direct link to a specific CONFIG project, or null for device-type / global rules' })
+  configProjectId: number | null;
 }
 
 export class AddConfigMapAssociationDto {
