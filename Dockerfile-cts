@@ -18,7 +18,11 @@ RUN echo "${username}:x:${uid}:"
 
 # ===   install ca sofeware === #
 # Install the ca-certificates package to manage certificates
-RUN apk --no-cache add ca-certificates bash curl git openssh
+RUN apk --no-cache add ca-certificates bash curl git openssh openssl
+# Enable OpenSSL 3.x legacy provider so old-format RSA private keys
+# (BEGIN RSA PRIVATE KEY / PKCS#1) are accepted by libcrypto / OpenSSH.
+RUN sed -i 's/^# \(legacy\s*=\s*legacy_sect\)/\1/' /etc/ssl/openssl.cnf || \
+    printf '\n[provider_sect]\ndefault = default_sect\nlegacy = legacy_sect\n[default_sect]\nactivate = 1\n[legacy_sect]\nactivate = 1\n' >> /etc/ssl/openssl.cnf
 # Create the CA certificates directory
 RUN mkdir -p /usr/local/share/ca-certificates/
 
