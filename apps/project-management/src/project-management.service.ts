@@ -1074,7 +1074,11 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   }
 
   async onModuleInit() {
-    this.uploadClient.subscribeToResponseOf([UploadTopics.DELETE_RELEASE])
+    this.uploadClient.subscribeToResponseOf([
+      UploadTopics.DELETE_RELEASE,
+      UploadTopics.IMPORT_RELEASE,
+      UploadTopics.GET_RELEASE_BY_VERSION,
+    ])
     await this.uploadClient.connect()
   }
 
