@@ -375,22 +375,25 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
         gitSource.branch = dto.gitBranch !== undefined ? dto.gitBranch : gitSource.branch;
         gitSource.getappFilePath = dto.gitGetappFilePath !== undefined ? dto.gitGetappFilePath : gitSource.getappFilePath;
 
-        // SSH key and HTTPS credentials are mutually exclusive
-        if (dto.gitSshKey !== undefined) {
-          if (dto.gitSshKey) {
-            gitSource.sshKey = dto.gitSshKey;
-            gitSource.httpsUsername = null;
-            gitSource.httpsPassword = null;
-          } else {
-            gitSource.sshKey = null;
-          }
-        } else if (dto.gitHttpsUsername !== undefined || dto.gitHttpsPassword !== undefined) {
-          gitSource.httpsUsername = dto.gitHttpsUsername !== undefined ? dto.gitHttpsUsername : gitSource.httpsUsername;
-          gitSource.httpsPassword = dto.gitHttpsPassword !== undefined ? dto.gitHttpsPassword : gitSource.httpsPassword;
-          if (gitSource.httpsUsername || gitSource.httpsPassword) {
-            gitSource.sshKey = null;
-          }
+        // SSH key and HTTPS credentials are mutually exclusive.
+        // Only update credentials when a real value is provided.
+        // Only clear the opposing method when explicitly switching to the other.
+        const incomingSshKey = dto.gitSshKey || null;
+        const incomingHttpsUser = dto.gitHttpsUsername || null;
+        const incomingHttpsPass = dto.gitHttpsPassword || null;
+
+        if (incomingSshKey) {
+          // Switching to / updating SSH — clear HTTPS credentials
+          gitSource.sshKey = incomingSshKey;
+          gitSource.httpsUsername = null;
+          gitSource.httpsPassword = null;
+        } else if (incomingHttpsUser || incomingHttpsPass) {
+          // Switching to / updating HTTPS — clear SSH key
+          gitSource.sshKey = null;
+          gitSource.httpsUsername = incomingHttpsUser ?? gitSource.httpsUsername;
+          gitSource.httpsPassword = incomingHttpsPass ?? gitSource.httpsPassword;
         }
+        // If neither is provided, retain existing credentials as-is
 
         // Generate webhook URL once when setting up git for the first time
         if (!gitSource.webhookUrl) {
