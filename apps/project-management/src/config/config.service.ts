@@ -401,14 +401,34 @@ export class ConfigService {
         }),
       );
 
-      // Create the first draft revision
-      await this.getOrCreateDraftRevision(project.id);
+      // Create the first draft revision with the 3 default groups
+      await this.provisionDefaultConfigProject(project.id);
 
       // Auto-link applicable CONFIG_MAP projects to this new CONFIG project
       await this.autoLinkConfigMapsForConfigProject(project.id, deviceId);
     }
 
     return project.id;
+  }
+
+  /**
+   * Creates a draft revision with the 3 standard empty groups for a newly
+   * created CONFIG project. Idempotent – if a draft already exists the call
+   * is a no-op; groups are only added when the revision has no groups yet.
+   */
+  async provisionDefaultConfigProject(projectId: number): Promise<void> {
+    const draft = await this.getOrCreateDraftRevision(projectId);
+
+    // Skip if groups were already created
+    const existingCount = await this.groupRepo.count({ where: { revisionId: draft.id } });
+    if (existingCount > 0) return;
+
+    const defaultGroups = ['getapp_metadata', 'getapp_enrollment', 'getapp_config'];
+    for (const name of defaultGroups) {
+      await this.groupRepo.save(
+        this.groupRepo.create({ revisionId: draft.id, name, isGlobal: false, gitFilePath: null }),
+      );
+    }
   }
 
   // ---------------------------------------------------------------------------

@@ -21,6 +21,7 @@ import { VaultCredentialsMigrationService } from './vault-credentials-migration.
 import { ConfigService as AppConfigService } from './config/config.service';
 import { ConfigController } from './config/config.controller';
 import { ConfigCacheService } from './config/config-cache.service';
+import { ConfigProjectProvisioningService } from './config/config-project-provisioning.service';
 import { S3Module } from '@app/common/AWS/s3.module';
 
 @Module({
@@ -58,6 +59,7 @@ import { S3Module } from '@app/common/AWS/s3.module';
     VaultCredentialsMigrationService,
     AppConfigService,
     ConfigCacheService,
+    ConfigProjectProvisioningService,
     {
       provide: PROJECT_ACCESS_SERVICE,
       useExisting: ProjectManagementService
