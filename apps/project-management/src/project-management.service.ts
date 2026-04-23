@@ -291,7 +291,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     // Create git source if provided
     if (projectDto.gitCloneUrl) {
       const gitSource = new ProjectGitSourceEntity();
-      gitSource.project = project;
+      gitSource.project = { id: project.id } as ProjectEntity;
       const webhookToken = this.generateWebhookToken();
       gitSource.cloneUrl = projectDto.gitCloneUrl;
       gitSource.cloneInterval = projectDto.gitCloneInterval ?? 60;
