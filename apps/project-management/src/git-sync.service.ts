@@ -253,6 +253,13 @@ export class GitSyncService {
       // Prevent interactive prompts (important for HTTPS auth failures)
       env.GIT_TERMINAL_PROMPT = '0';
 
+      // Skip SSL verification when GIT_SYNC_SSL_NO_VERIFY=true, to handle
+      // self-signed / private CA certificates in environments where installing
+      // CA certs on pods is not feasible
+      if (process.env.GIT_SYNC_SSL_NO_VERIFY === 'true') {
+        env.GIT_SSL_NO_VERIFY = '1';
+      }
+
       const { stdout, stderr } = await execAsync(cmd, { env });
 
       this.logger.debug(`Git clone output: ${stdout}`);
