@@ -287,70 +287,81 @@ export class ConfigService {
   // ---------------------------------------------------------------------------
 
   async addConfigMapAssociation(dto: AddConfigMapAssociationDto): Promise<ConfigMapAssociationDto[]> {
+    if (!dto.configMapProjectIdentifier) {
+      throw new BadRequestException('configMapProjectIdentifier is required');
+    }
+
+    const hasDeviceType = dto.deviceTypeId != null;
+    const hasDeviceIds = dto.deviceIds && dto.deviceIds.length > 0;
+    if (!hasDeviceType && !hasDeviceIds) {
+      throw new BadRequestException('At least one association target must be provided: deviceTypeId or deviceIds');
+    }
+
     const project = await this.requireProject(dto.configMapProjectIdentifier, ProjectType.CONFIG_MAP);
 
     const created: ConfigMapAssociationDto[] = [];
 
     // --- Device-type association ---
-    if (dto.deviceTypeId != null) {
+    if (hasDeviceType) {
       const dt = await this.deviceTypeRepo.findOne({ where: { id: dto.deviceTypeId } });
       if (!dt) throw new NotFoundException(`Device type ${dto.deviceTypeId} not found`);
 
-      const assoc = await this.assocRepo.save(
-        this.assocRepo.create({
-          configMapProjectId: project.id,
-          deviceTypeId: dto.deviceTypeId,
-          deviceId: null,
-          configProjectId: null,
-        }),
-      );
-      created.push({ id: assoc.id, configMapProjectId: assoc.configMapProjectId, deviceTypeId: assoc.deviceTypeId, deviceId: null, configProjectId: null });
-
-      // Auto-create direct config_project_id links for existing devices of this type
-      await this.autoLinkConfigProjectsForDeviceType(project.id, dto.deviceTypeId);
-    }
-
-    // --- Device-ID associations ---
-    if (dto.deviceIds && dto.deviceIds.length > 0) {
-      for (const deviceId of dto.deviceIds) {
+      const existingDt = await this.assocRepo.findOne({
+        where: { configMapProjectId: project.id, deviceTypeId: dto.deviceTypeId },
+      });
+      if (existingDt) {
+        created.push({ id: existingDt.id, configMapProjectId: existingDt.configMapProjectId, deviceTypeId: existingDt.deviceTypeId, deviceId: null, configProjectId: null });
+      } else {
         const assoc = await this.assocRepo.save(
           this.assocRepo.create({
             configMapProjectId: project.id,
-            deviceTypeId: null,
-            deviceId,
+            deviceTypeId: dto.deviceTypeId,
+            deviceId: null,
             configProjectId: null,
           }),
         );
-        created.push({ id: assoc.id, configMapProjectId: assoc.configMapProjectId, deviceTypeId: null, deviceId: assoc.deviceId ?? null, configProjectId: null });
+        created.push({ id: assoc.id, configMapProjectId: assoc.configMapProjectId, deviceTypeId: assoc.deviceTypeId, deviceId: null, configProjectId: null });
       }
     }
 
-    // --- Global association (neither deviceTypeId nor deviceIds provided) ---
-    if (dto.deviceTypeId == null && (!dto.deviceIds || dto.deviceIds.length === 0)) {
-      const assoc = await this.assocRepo.save(
-        this.assocRepo.create({
-          configMapProjectId: project.id,
-          deviceTypeId: null,
-          deviceId: null,
-          configProjectId: null,
-        }),
-      );
-      created.push({ id: assoc.id, configMapProjectId: assoc.configMapProjectId, deviceTypeId: null, deviceId: null, configProjectId: null });
+    // --- Device-ID associations ---
+    if (hasDeviceIds) {
+      for (const deviceId of dto.deviceIds!) {
+        const existingDevice = await this.assocRepo.findOne({
+          where: { configMapProjectId: project.id, deviceId },
+        });
+        if (existingDevice) {
+          created.push({ id: existingDevice.id, configMapProjectId: existingDevice.configMapProjectId, deviceTypeId: null, deviceId: existingDevice.deviceId ?? null, configProjectId: null });
+        } else {
+          const assoc = await this.assocRepo.save(
+            this.assocRepo.create({
+              configMapProjectId: project.id,
+              deviceTypeId: null,
+              deviceId,
+              configProjectId: null,
+            }),
+          );
+          created.push({ id: assoc.id, configMapProjectId: assoc.configMapProjectId, deviceTypeId: null, deviceId: assoc.deviceId ?? null, configProjectId: null });
+        }
+      }
     }
 
     return created;
   }
 
-  async removeConfigMapAssociation(dto: RemoveConfigMapAssociationDto): Promise<void> {
+  async removeConfigMapAssociation(dto: RemoveConfigMapAssociationDto): Promise<{ success: boolean }> {
     const assoc = await this.assocRepo.findOne({ where: { id: dto.associationId } });
     if (!assoc) throw new NotFoundException(`Association ${dto.associationId} not found`);
     await this.assocRepo.remove(assoc);
+    return { success: true };
   }
 
   async getConfigMapAssociations(configMapProjectIdentifier: number | string): Promise<ConfigMapAssociationDto[]> {
     const project = await this.requireProject(configMapProjectIdentifier, ProjectType.CONFIG_MAP);
-    const assocs = await this.assocRepo.find({ where: { configMapProjectId: project.id } });
-    return assocs.map((a) => ({ id: a.id, configMapProjectId: a.configMapProjectId, deviceTypeId: a.deviceTypeId, deviceId: a.deviceId ?? null, configProjectId: a.configProjectId ?? null }));
+    // Only return user-created associations (configProjectId rows are internal denormalization)
+    const assocs = await this.assocRepo.find({ where: { configMapProjectId: project.id, configProjectId: IsNull() } });
+    const result = await assocs.map((a) => ({ id: a.id, configMapProjectId: a.configMapProjectId, deviceTypeId: a.deviceTypeId, deviceId: a.deviceId ?? null, configProjectId: null }));
+    return result;
   }
 
   /**
@@ -375,13 +386,12 @@ export class ConfigService {
       deviceTypeIds.push(...(device?.deviceType?.map((dt) => dt.id) ?? []));
     }
 
-    // Query: global OR device-type match OR device-id match OR direct config_project_id link
+    // Query: global OR device-type match OR device-id match
     const applicableAssocs = await this.assocRepo.find({
       where: [
         { deviceTypeId: IsNull(), deviceId: IsNull(), configProjectId: IsNull() }, // global
         ...(deviceTypeIds.length > 0 ? [{ deviceTypeId: In(deviceTypeIds) }] : []),
         ...(deviceId ? [{ deviceId }] : []),
-        { configProjectId: configProject.id }, // direct link
       ],
     });
 
@@ -434,9 +444,6 @@ export class ConfigService {
 
       // Create the first draft revision with the 3 default groups
       await this.provisionDefaultConfigProject(project.id);
-
-      // Auto-link applicable CONFIG_MAP projects to this new CONFIG project
-      await this.autoLinkConfigMapsForConfigProject(project.id, deviceId);
     }
 
     return project.id;
@@ -493,7 +500,6 @@ export class ConfigService {
         { deviceTypeId: IsNull(), deviceId: IsNull(), configProjectId: IsNull() }, // global
         ...(deviceTypeIds.length > 0 ? [{ deviceTypeId: In(deviceTypeIds) }] : []),
         { deviceId }, // device-id direct association
-        ...(configProject ? [{ configProjectId: configProject.id }] : []), // direct link
       ],
     });
 
@@ -604,69 +610,6 @@ export class ConfigService {
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
-
-  /**
-   * After a device-type CONFIG_MAP association is created, create direct
-   * `config_project_id` rows for every existing CONFIG project whose device
-   * already has that device type.
-   */
-  private async autoLinkConfigProjectsForDeviceType(configMapProjectId: number, deviceTypeId: number): Promise<void> {
-    // Find all devices with this device type
-    const devicesWithType = await this.deviceRepo
-      .createQueryBuilder('d')
-      .innerJoin('d.deviceType', 'dt', 'dt.id = :typeId', { typeId: deviceTypeId })
-      .getMany();
-
-    for (const device of devicesWithType) {
-      const configProject = await this.projectRepo.findOne({
-        where: { name: `config:${device.ID}`, projectType: ProjectType.CONFIG },
-      });
-      if (!configProject) continue;
-
-      const existing = await this.assocRepo.findOne({
-        where: { configMapProjectId, configProjectId: configProject.id },
-      });
-      if (!existing) {
-        await this.assocRepo.save(
-          this.assocRepo.create({ configMapProjectId, configProjectId: configProject.id, deviceTypeId: null }),
-        );
-      }
-    }
-  }
-
-  /**
-   * After a new device CONFIG project is created, create direct
-   * `config_project_id` rows for every CONFIG_MAP project whose device-type
-   * associations (or global associations) match this device.
-   */
-  private async autoLinkConfigMapsForConfigProject(configProjectId: number, deviceId: string): Promise<void> {
-    const device = await this.deviceRepo.findOne({
-      where: { ID: deviceId },
-      relations: { deviceType: true },
-    });
-    if (!device) return;
-
-    const deviceTypeIds = device.deviceType?.map((dt) => dt.id) ?? [];
-
-    const matchingAssocs = await this.assocRepo.find({
-      where: [
-        { deviceTypeId: IsNull(), deviceId: IsNull(), configProjectId: IsNull() }, // global
-        ...(deviceTypeIds.length > 0 ? [{ deviceTypeId: In(deviceTypeIds) }] : []),
-        { deviceId }, // device-id direct association
-      ],
-    });
-
-    for (const assoc of matchingAssocs) {
-      const existing = await this.assocRepo.findOne({
-        where: { configMapProjectId: assoc.configMapProjectId, configProjectId },
-      });
-      if (!existing) {
-        await this.assocRepo.save(
-          this.assocRepo.create({ configMapProjectId: assoc.configMapProjectId, configProjectId, deviceTypeId: null }),
-        );
-      }
-    }
-  }
 
   private collectGlobals(groups: ConfigGroupEntity[]): Record<string, string | null> {
     const result: Record<string, string | null> = {};
