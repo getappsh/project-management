@@ -395,11 +395,9 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
         }
         // If neither is provided, retain existing credentials as-is
 
-        // Generate webhook URL once when setting up git for the first time
-        if (!gitSource.webhookUrl) {
-          const webhookToken = this.generateWebhookToken();
-          gitSource.webhookUrl = this.generateWebhookUrl(webhookToken, dto.apiBaseUrl);
-        }
+        // Always regenerate webhook URL to fix any malformed URLs
+        const webhookToken = this.generateWebhookToken();
+        gitSource.webhookUrl = this.generateWebhookUrl(webhookToken, dto.apiBaseUrl);
 
         if (!project.gitSource) {
           gitSource.project = project;
@@ -1041,7 +1039,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
    */
   private generateWebhookUrl(token: string, apiBaseUrl?: string): string {
     const baseUrl = process.env.API_BASE_URL || apiBaseUrl || 'http://localhost:3000';
-    return `${baseUrl}/api/projects/git-webhook/${token}`;
+    return `${baseUrl}/api/v1/project/git-webhook/${token}`;
   }
 
   /**
