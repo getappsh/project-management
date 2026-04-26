@@ -2,7 +2,7 @@ import { MemberProjectEntity, MemberEntity, ProjectEntity, ProjectGitSourceEntit
 import { BadRequestException, ConflictException, ForbiddenException, forwardRef, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, ILike, In } from 'typeorm';
+import { Repository, ILike, In, Not } from 'typeorm';
 import { AddMemberToProjectDto, EditProjectMemberDto, ProjectMemberParams, ProjectMemberPreferencesDto } from '@app/common/dto/project-management/dto/project-member.dto';
 import {
   DeviceResDto, ProjectReleasesDto, ProjectTokenDto,
@@ -99,7 +99,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
 
   async getProjects(query: GetProjectsQueryDto, email: string): Promise<PaginatedResultDto<ProjectDto>> {
     this.logger.debug(`Get projects with query: ${JSON.stringify(query)}`)
-    const { page = 1, perPage = 10, pinned, includePinned, projectNames } = query;
+    const { page = 1, perPage = 10, pinned, includePinned, projectNames, projectTypes } = query;
 
     const pinnedQuery: { pinned?: boolean } = { pinned: undefined };
     if (includePinned === false) {
@@ -108,6 +108,11 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     if (pinned === true) {
       pinnedQuery.pinned = true;
     }
+
+    // If specific types are requested, filter to those; otherwise exclude config types by default
+    const typeFilter = projectTypes && projectTypes.length > 0
+      ? { projectType: In(projectTypes) }
+      : { projectType: Not(In([ProjectType.CONFIG, ProjectType.CONFIG_MAP])) };
 
     // When projectNames is provided (e.g., from discovery service), skip user/member filtering
     let whereCondition: any;
@@ -124,6 +129,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
           member: { email: email },
           ...pinnedQuery
         },
+        ...typeFilter
       };
     }
 

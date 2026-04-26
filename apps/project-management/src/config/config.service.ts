@@ -257,6 +257,14 @@ export class ConfigService {
     );
 
     this.logger.log(`Applied revision ${draft.id} (rev#${draft.revisionNumber}) for project ${project.id}`);
+
+    // Cascade: if a config map was applied, re-publish all associated device config projects
+    if (project.projectType === ProjectType.CONFIG_MAP) {
+      this.cascadeConfigMapRevisionToDevices(project.id).catch((err) =>
+        this.logger.error(`Config map cascade update failed for project ${project.id}: ${(err as Error)?.message}`),
+      );
+    }
+
     return this.mapRevisionToDto(draft, true);
   }
 
@@ -478,13 +486,109 @@ export class ConfigService {
    * Called once at project creation time.
    */
   private async autoPublishInitialRevision(projectId: number, deviceId: string): Promise<void> {
-    const draft = await this.revisionRepo.findOne({
-      where: { projectId, status: ConfigRevisionStatus.DRAFT },
-      relations: { groups: { entries: true } },
-    });
+    const draft = await this.revisionRepo.findOne({ where: { projectId, status: ConfigRevisionStatus.DRAFT } });
     if (!draft) return;
 
-    // Resolve device types so we can find applicable config map associations
+    await this.populateDraftFromConfigMaps(draft.id, deviceId);
+
+    // Promote draft → active (use update to avoid cascade-clearing the groups relation)
+    await this.revisionRepo.update(draft.id, { status: ConfigRevisionStatus.ACTIVE, appliedAt: new Date() });
+
+    // Create fresh empty draft for subsequent edits
+    await this.revisionRepo.save(
+      this.revisionRepo.create({ projectId, revisionNumber: draft.revisionNumber + 1, status: ConfigRevisionStatus.DRAFT }),
+    );
+
+    this.logger.log(`Auto-published initial revision for config project of device ${deviceId}`);
+  }
+
+  /**
+   * Finds all device config projects associated with a config map project
+   * (via direct deviceId or deviceType associations) and re-publishes each one.
+   * Runs fire-and-forget from applyRevision.
+   */
+  private async cascadeConfigMapRevisionToDevices(configMapProjectId: number): Promise<void> {
+    const assocs = await this.assocRepo.find({ where: { configMapProjectId, configProjectId: IsNull() } });
+    if (assocs.length === 0) return;
+
+    const deviceIdSet = new Set<string>();
+
+    // Direct device associations
+    for (const a of assocs) {
+      if (a.deviceId) deviceIdSet.add(a.deviceId);
+    }
+
+    // Device-type associations → expand to all devices of those types
+    const typeIds = [...new Set(assocs.filter((a) => a.deviceTypeId != null).map((a) => a.deviceTypeId!))];
+    if (typeIds.length > 0) {
+      const devicesByType = await this.deviceRepo
+        .createQueryBuilder('d')
+        .innerJoin('d.deviceType', 'dt', 'dt.id IN (:...typeIds)', { typeIds })
+        .select('d.ID', 'id')
+        .getRawMany<{ id: string }>();
+      for (const { id } of devicesByType) deviceIdSet.add(id);
+    }
+
+    if (deviceIdSet.size === 0) return;
+
+    this.logger.log(`Cascading config map ${configMapProjectId} update to ${deviceIdSet.size} device config project(s)`);
+
+    for (const deviceId of deviceIdSet) {
+      const projectName = `config:${deviceId}`;
+      const configProject = await this.projectRepo.findOne({ where: { name: projectName, projectType: ProjectType.CONFIG } });
+      if (!configProject) continue; // device hasn't enrolled yet — will get it on first ensureDeviceConfigProject
+
+      try {
+        await this.refreshConfigProjectRevision(configProject.id, deviceId);
+      } catch (err) {
+        this.logger.error(`Failed to cascade config map update to ${projectName}: ${(err as Error)?.message}`);
+      }
+    }
+  }
+
+  /**
+   * Re-publishes a config project by resetting its current draft to a fresh snapshot
+   * from all applicable config maps, then archiving the current active revision and
+   * promoting the draft to active. Creates a fresh empty draft for subsequent edits.
+   */
+  private async refreshConfigProjectRevision(projectId: number, deviceId: string): Promise<void> {
+    const draft = await this.getOrCreateDraftRevision(projectId);
+
+    // Clear the draft entirely so we start from a clean slate
+    const existingGroups = await this.groupRepo.find({ where: { revisionId: draft.id } });
+    for (const g of existingGroups) {
+      await this.entryRepo.delete({ groupId: g.id });
+    }
+    if (existingGroups.length > 0) {
+      await this.groupRepo.delete({ revisionId: draft.id });
+    }
+
+    // Re-populate from all applicable config maps
+    await this.populateDraftFromConfigMaps(draft.id, deviceId);
+
+    // Archive the current active revision
+    await this.revisionRepo.update(
+      { projectId, status: ConfigRevisionStatus.ACTIVE },
+      { status: ConfigRevisionStatus.ARCHIVED },
+    );
+
+    // Promote draft → active
+    await this.revisionRepo.update(draft.id, { status: ConfigRevisionStatus.ACTIVE, appliedAt: new Date() });
+
+    // Create fresh empty draft for subsequent edits
+    await this.revisionRepo.save(
+      this.revisionRepo.create({ projectId, revisionNumber: draft.revisionNumber + 1, status: ConfigRevisionStatus.DRAFT }),
+    );
+
+    this.logger.log(`Re-published config project for device ${deviceId} due to config map update`);
+  }
+
+  /**
+   * Populates a draft revision's groups and entries from all config map active revisions
+   * that apply to the given device (global + device-type + direct device associations).
+   * If a group already exists in the draft its entries are replaced; otherwise it is created.
+   */
+  private async populateDraftFromConfigMaps(draftId: number, deviceId: string): Promise<void> {
     const device = await this.deviceRepo.findOne({ where: { ID: deviceId }, relations: { deviceType: true } });
     const deviceTypeIds = device?.deviceType?.map((dt) => dt.id) ?? [];
 
@@ -496,55 +600,47 @@ export class ConfigService {
       ],
     });
 
-    if (applicableAssocs.length > 0) {
-      const configMapProjectIds = [...new Set(applicableAssocs.map((a) => a.configMapProjectId))];
-      const activeRevisions = await this.revisionRepo.find({
-        where: { projectId: In(configMapProjectIds), status: ConfigRevisionStatus.ACTIVE },
-        relations: { groups: { entries: true } },
-      });
+    if (applicableAssocs.length === 0) return;
 
-      // Accumulate merged entries per group name (later config map wins on key conflict)
-      const groupMeta = new Map<string, { isGlobal: boolean; gitFilePath: string | null }>();
-      const groupEntries = new Map<string, Map<string, { value: string | null; isSensitive: boolean }>>();
+    const configMapProjectIds = [...new Set(applicableAssocs.map((a) => a.configMapProjectId))];
+    const activeRevisions = await this.revisionRepo.find({
+      where: { projectId: In(configMapProjectIds), status: ConfigRevisionStatus.ACTIVE },
+      relations: { groups: { entries: true } },
+    });
 
-      for (const rev of activeRevisions) {
-        for (const cmGroup of rev.groups) {
-          if (!groupEntries.has(cmGroup.name)) {
-            groupMeta.set(cmGroup.name, { isGlobal: cmGroup.isGlobal, gitFilePath: cmGroup.gitFilePath });
-            groupEntries.set(cmGroup.name, new Map());
-          }
-          for (const e of cmGroup.entries ?? []) {
-            groupEntries.get(cmGroup.name)!.set(e.key, { value: e.value, isSensitive: e.isSensitive });
-          }
+    // Accumulate merged entries per group (later config map wins on key conflict)
+    const groupMeta = new Map<string, { isGlobal: boolean; gitFilePath: string | null }>();
+    const groupEntries = new Map<string, Map<string, { value: string | null; isSensitive: boolean }>>();
+
+    for (const rev of activeRevisions) {
+      for (const cmGroup of rev.groups) {
+        if (!groupEntries.has(cmGroup.name)) {
+          groupMeta.set(cmGroup.name, { isGlobal: cmGroup.isGlobal, gitFilePath: cmGroup.gitFilePath });
+          groupEntries.set(cmGroup.name, new Map());
         }
-      }
-
-      for (const [groupName, entries] of groupEntries) {
-        let draftGroup = draft.groups?.find((g) => g.name === groupName);
-        if (!draftGroup) {
-          const meta = groupMeta.get(groupName)!;
-          draftGroup = await this.groupRepo.save(
-            this.groupRepo.create({ revisionId: draft.id, name: groupName, isGlobal: meta.isGlobal, gitFilePath: meta.gitFilePath }),
-          );
-        }
-        if (entries.size > 0) {
-          const toSave = [...entries.entries()].map(([key, { value, isSensitive }]) =>
-            this.entryRepo.create({ groupId: draftGroup!.id, key, value, isSensitive }),
-          );
-          await this.entryRepo.save(toSave);
+        for (const e of cmGroup.entries ?? []) {
+          groupEntries.get(cmGroup.name)!.set(e.key, { value: e.value, isSensitive: e.isSensitive });
         }
       }
     }
 
-    // Promote draft → active (use update to avoid cascade-clearing the groups relation)
-    await this.revisionRepo.update(draft.id, { status: ConfigRevisionStatus.ACTIVE, appliedAt: new Date() });
-
-    // Create fresh empty draft for subsequent edits
-    await this.revisionRepo.save(
-      this.revisionRepo.create({ projectId, revisionNumber: draft.revisionNumber + 1, status: ConfigRevisionStatus.DRAFT }),
-    );
-
-    this.logger.log(`Auto-published initial revision for config project of device ${deviceId}`);
+    for (const [groupName, entries] of groupEntries) {
+      let draftGroup = await this.groupRepo.findOne({ where: { revisionId: draftId, name: groupName } });
+      if (!draftGroup) {
+        const meta = groupMeta.get(groupName)!;
+        draftGroup = await this.groupRepo.save(
+          this.groupRepo.create({ revisionId: draftId, name: groupName, isGlobal: meta.isGlobal, gitFilePath: meta.gitFilePath }),
+        );
+      } else {
+        await this.entryRepo.delete({ groupId: draftGroup.id });
+      }
+      if (entries.size > 0) {
+        const toSave = [...entries.entries()].map(([key, { value, isSensitive }]) =>
+          this.entryRepo.create({ groupId: draftGroup!.id, key, value, isSensitive }),
+        );
+        await this.entryRepo.save(toSave);
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
