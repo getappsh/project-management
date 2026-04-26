@@ -214,9 +214,19 @@ export class GitSyncService {
       sshKeyPath = await this.setupSshKey(gitSource.sshKey, sshDir);
     }
 
-    // Build the effective clone URL (embed HTTPS credentials when provided)
+    // Build the effective clone URL
     let effectiveCloneUrl = gitCloneUrl!;
-    if (gitSource.httpsUsername && gitSource.httpsPassword) {
+
+    if (sshKeyPath) {
+      // When an SSH key is configured, ensure we use the SSH form of the URL.
+      // If the stored URL is HTTPS (https://host/org/repo.git) convert it to
+      // SSH (git@host:org/repo.git) so git actually uses the key.
+      effectiveCloneUrl = this.convertToSshUrl(gitCloneUrl!);
+      if (effectiveCloneUrl !== gitCloneUrl) {
+        this.logger.debug(`Converted HTTPS clone URL to SSH: ${effectiveCloneUrl}`);
+      }
+    } else if (gitSource.httpsUsername && gitSource.httpsPassword) {
+      // Embed HTTPS credentials when provided and no SSH key is in use
       try {
         const parsed = new URL(gitCloneUrl!);
         parsed.username = encodeURIComponent(gitSource.httpsUsername);
@@ -253,6 +263,13 @@ export class GitSyncService {
       // Prevent interactive prompts (important for HTTPS auth failures)
       env.GIT_TERMINAL_PROMPT = '0';
 
+      // Skip SSL verification when GIT_SYNC_SSL_NO_VERIFY=true, to handle
+      // self-signed / private CA certificates in environments where installing
+      // CA certs on pods is not feasible
+      if (process.env.GIT_SYNC_SSL_NO_VERIFY === 'true') {
+        env.GIT_SSL_NO_VERIFY = '1';
+      }
+
       const { stdout, stderr } = await execAsync(cmd, { env });
 
       this.logger.debug(`Git clone output: ${stdout}`);
@@ -268,7 +285,7 @@ export class GitSyncService {
   /**
    * Set up SSH key for git operations in an isolated directory
    * This ensures the host machine's ~/.ssh is never touched or affected
-   * @param sshKey - Base64 encoded SSH private key
+   * @param sshKey - SSH private key (PEM format, plain text)
    * @param sshDir - Isolated directory for SSH configuration (not host ~/.ssh)
    * @returns Path to the SSH key file
    */
@@ -279,9 +296,13 @@ export class GitSyncService {
     const keyPath = path.join(sshDir, 'id_rsa');
     const knownHostsPath = path.join(sshDir, 'known_hosts');
 
-    // Decode and write SSH private key with secure permissions
-    const decodedKey = Buffer.from(sshKey, 'base64').toString('utf-8');
-    await fs.promises.writeFile(keyPath, decodedKey, { mode: 0o600 });
+    // Normalize line endings (strip \r) and ensure a trailing newline —
+    // OpenSSH (via libcrypto) rejects keys that are missing either.
+    let keyContent = sshKey.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    if (!keyContent.endsWith('\n')) {
+      keyContent += '\n';
+    }
+    await fs.promises.writeFile(keyPath, keyContent, { mode: 0o600 });
 
     // Create empty known_hosts file (will be populated during clone)
     await fs.promises.writeFile(knownHostsPath, '', { mode: 0o600 });
@@ -445,6 +466,29 @@ export class GitSyncService {
 
     // Emit via microservice client
     this.uploadClient.emit(ProjectManagementTopicsEmit.GIT_SYNC_COMPLETED, event);
+  }
+
+  /**
+   * Convert an HTTPS git URL to its SSH equivalent.
+   * e.g. https://github.com/org/repo.git  →  git@github.com:org/repo.git
+   * SSH URLs are passed through unchanged.
+   */
+  private convertToSshUrl(url: string): string {
+    // Already an SSH URL (git@ or ssh://)
+    if (url.startsWith('git@') || url.startsWith('ssh://')) {
+      return url;
+    }
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+        // Remove leading slash from pathname: /org/repo.git → org/repo.git
+        const repoPath = parsed.pathname.replace(/^\//, '');
+        return `git@${parsed.hostname}:${repoPath}`;
+      }
+    } catch {
+      // Not a valid URL — return as-is
+    }
+    return url;
   }
 
   /**

@@ -291,7 +291,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     // Create git source if provided
     if (projectDto.gitCloneUrl) {
       const gitSource = new ProjectGitSourceEntity();
-      gitSource.project = project;
+      gitSource.project = { id: project.id } as ProjectEntity;
       const webhookToken = this.generateWebhookToken();
       gitSource.cloneUrl = projectDto.gitCloneUrl;
       gitSource.cloneInterval = projectDto.gitCloneInterval ?? 60;
@@ -375,28 +375,29 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
         gitSource.branch = dto.gitBranch !== undefined ? dto.gitBranch : gitSource.branch;
         gitSource.getappFilePath = dto.gitGetappFilePath !== undefined ? dto.gitGetappFilePath : gitSource.getappFilePath;
 
-        // SSH key and HTTPS credentials are mutually exclusive
-        if (dto.gitSshKey !== undefined) {
-          if (dto.gitSshKey) {
-            gitSource.sshKey = dto.gitSshKey;
-            gitSource.httpsUsername = null;
-            gitSource.httpsPassword = null;
-          } else {
-            gitSource.sshKey = null;
-          }
-        } else if (dto.gitHttpsUsername !== undefined || dto.gitHttpsPassword !== undefined) {
-          gitSource.httpsUsername = dto.gitHttpsUsername !== undefined ? dto.gitHttpsUsername : gitSource.httpsUsername;
-          gitSource.httpsPassword = dto.gitHttpsPassword !== undefined ? dto.gitHttpsPassword : gitSource.httpsPassword;
-          if (gitSource.httpsUsername || gitSource.httpsPassword) {
-            gitSource.sshKey = null;
-          }
-        }
+        // SSH key and HTTPS credentials are mutually exclusive.
+        // Only update credentials when a real value is provided.
+        // Only clear the opposing method when explicitly switching to the other.
+        const incomingSshKey = dto.gitSshKey || null;
+        const incomingHttpsUser = dto.gitHttpsUsername || null;
+        const incomingHttpsPass = dto.gitHttpsPassword || null;
 
-        // Generate webhook URL once when setting up git for the first time
-        if (!gitSource.webhookUrl) {
-          const webhookToken = this.generateWebhookToken();
-          gitSource.webhookUrl = this.generateWebhookUrl(webhookToken, dto.apiBaseUrl);
+        if (incomingSshKey) {
+          // Switching to / updating SSH — clear HTTPS credentials
+          gitSource.sshKey = incomingSshKey;
+          gitSource.httpsUsername = null;
+          gitSource.httpsPassword = null;
+        } else if (incomingHttpsUser || incomingHttpsPass) {
+          // Switching to / updating HTTPS — clear SSH key
+          gitSource.sshKey = null;
+          gitSource.httpsUsername = incomingHttpsUser ?? gitSource.httpsUsername;
+          gitSource.httpsPassword = incomingHttpsPass ?? gitSource.httpsPassword;
         }
+        // If neither is provided, retain existing credentials as-is
+
+        // Always regenerate webhook URL to fix any malformed URLs
+        const webhookToken = this.generateWebhookToken();
+        gitSource.webhookUrl = this.generateWebhookUrl(webhookToken, dto.apiBaseUrl);
 
         if (!project.gitSource) {
           gitSource.project = project;
@@ -1038,7 +1039,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
    */
   private generateWebhookUrl(token: string, apiBaseUrl?: string): string {
     const baseUrl = process.env.API_BASE_URL || apiBaseUrl || 'http://localhost:3000';
-    return `${baseUrl}/api/projects/git-webhook/${token}`;
+    return `${baseUrl}/api/v1/project/git-webhook/${token}`;
   }
 
   /**
@@ -1074,7 +1075,11 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   }
 
   async onModuleInit() {
-    this.uploadClient.subscribeToResponseOf([UploadTopics.DELETE_RELEASE])
+    this.uploadClient.subscribeToResponseOf([
+      UploadTopics.DELETE_RELEASE,
+      UploadTopics.IMPORT_RELEASE,
+      UploadTopics.GET_RELEASE_BY_VERSION,
+    ])
     await this.uploadClient.connect()
   }
 
