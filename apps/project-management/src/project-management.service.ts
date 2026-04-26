@@ -177,7 +177,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   // TODO status not implemented
   async searchProjects(dto: SearchProjectsQueryDto, email: string): Promise<PaginatedResultDto<BaseProjectDto>> {
     this.logger.debug(`Search projects with query: ${JSON.stringify(dto)}`)
-    const { page = 1 , perPage = 10, query, status, includeUnassociated } = dto;
+    const { page = 1 , perPage = 10, query, status, includeUnassociated, projectTypes } = dto;
     const whereCondition: any = {};
     
     if (includeUnassociated !== true) {
@@ -185,6 +185,11 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     }
     if (query && query.trim() !== "") {
       whereCondition.name = ILike(`%${query}%`);
+    }
+    if (projectTypes && projectTypes.length > 0) {
+      whereCondition.projectType = In(projectTypes);
+    } else {
+      whereCondition.projectType = Not(In([ProjectType.CONFIG, ProjectType.CONFIG_MAP]));
     }
 
     const [projectsEntities, count] = await this.projectRepo.findAndCount({
