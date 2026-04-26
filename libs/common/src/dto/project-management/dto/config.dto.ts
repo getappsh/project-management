@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, ValidateNested, ArrayNotEmpty } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ConfigRevisionStatus } from '@app/common/database/entities';
 
@@ -204,7 +204,10 @@ export class ConfigMapAssociationDto {
   @ApiProperty({ required: false })
   deviceTypeId: number | null;
 
-  @ApiProperty({ required: false, description: 'Direct link to a specific CONFIG project, or null for device-type / global rules' })
+  @ApiProperty({ required: false, description: 'Specific device ID this association targets, or null for device-type / global rules' })
+  deviceId: string | null;
+
+  @ApiProperty({ required: false, description: 'Direct link to a specific CONFIG project, or null for device-type / device-id / global rules' })
   configProjectId: number | null;
 }
 
@@ -217,6 +220,13 @@ export class AddConfigMapAssociationDto {
   @IsInt()
   @IsOptional()
   deviceTypeId?: number;
+
+  @ApiProperty({ required: false, description: 'Array of device IDs to associate with directly.' })
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsString({ each: true })
+  @IsOptional()
+  deviceIds?: string[];
 }
 
 export class RemoveConfigMapAssociationDto {

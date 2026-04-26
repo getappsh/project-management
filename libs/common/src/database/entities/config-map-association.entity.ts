@@ -1,16 +1,17 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { ProjectEntity } from './project.entity';
 import { DeviceTypeEntity } from './device-type.entity';
+import { DeviceEntity } from './device.entity';
 
 /**
- * Associates a CONFIG_MAP project with one or more device types so that
- * every device belonging to those device types automatically receives the
- * configMap's groups as part of its merged config.
+ * Associates a CONFIG_MAP project with one or more device types / specific devices so that
+ * those devices automatically receive the configMap's groups as part of their merged config.
  *
  * Each row can represent:
- *  - device-type rule:  deviceTypeId set, configProjectId null  → applies to all devices of that type
- *  - direct link:       configProjectId set, deviceTypeId null  → applies to this specific CONFIG project
- *  - global:            both null                                → applies to all CONFIG projects
+ *  - device-type rule:  deviceTypeId set, deviceId null, configProjectId null  → applies to all devices of that type
+ *  - device-id rule:    deviceId set, deviceTypeId null, configProjectId null  → applies to a specific device
+ *  - direct link:       configProjectId set, deviceTypeId null, deviceId null  → applies to this specific CONFIG project
+ *  - global:            all three null                                          → applies to all CONFIG projects
  */
 @Entity('config_map_association')
 export class ConfigMapAssociationEntity {
@@ -30,6 +31,14 @@ export class ConfigMapAssociationEntity {
 
   @Column({ name: 'device_type_id', nullable: true })
   deviceTypeId: number | null;
+
+  /** When set, this row applies only to the specific device with this ID. */
+  @ManyToOne(() => DeviceEntity, { nullable: true, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'device_id', referencedColumnName: 'ID' })
+  device: DeviceEntity | null;
+
+  @Column({ name: 'device_id', nullable: true, type: 'character varying' })
+  deviceId: string | null;
 
   /**
    * When set this row is a direct link between this CONFIG_MAP project and a specific
