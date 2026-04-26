@@ -6,8 +6,10 @@ import { ConfigService } from './config.service';
 import {
   AddConfigMapAssociationDto,
   ApplyConfigRevisionDto,
+  CreateDraftRevisionDto,
   DeleteConfigEntryDto,
   DeleteConfigGroupDto,
+  DeleteDraftRevisionDto,
   GetConfigRevisionByIdDto,
   GetConfigRevisionsDto,
   GetDeviceConfigDto,
@@ -68,6 +70,16 @@ export class ConfigController {
   @MessagePattern(ProjectManagementTopics.CONFIG_GET_REVISION_BY_ID)
   getRevisionById(@RpcPayload() dto: GetConfigRevisionByIdDto) {
     return this.configService.getRevisionById(dto);
+  }
+
+  @MessagePattern(ProjectManagementTopics.CONFIG_CREATE_DRAFT_REVISION)
+  createDraftRevision(@RpcPayload() dto: CreateDraftRevisionDto) {
+    return this.configService.createDraftRevision(dto);
+  }
+
+  @MessagePattern(ProjectManagementTopics.CONFIG_DELETE_DRAFT_REVISION)
+  deleteDraftRevision(@RpcPayload() dto: DeleteDraftRevisionDto) {
+    return this.configService.deleteDraftRevision(dto);
   }
 
   // ---------------------------------------------------------------------------

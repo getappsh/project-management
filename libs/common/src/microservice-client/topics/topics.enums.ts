@@ -187,6 +187,8 @@ export const ProjectManagementTopics = {
     CONFIG_GET_CONFIG_MAPS_FOR_PROJECT: `getapp-project-management.config.get-config-maps-for-project${region}`,
     CONFIG_GET_DEVICE_CONFIG: `getapp-project-management.config.get-device-config${region}`,
     CONFIG_ENSURE_DEVICE_PROJECT: `getapp-project-management.config.ensure-device-project${region}`,
+    CONFIG_CREATE_DRAFT_REVISION: `getapp-project-management.config.create-draft-revision${region}`,
+    CONFIG_DELETE_DRAFT_REVISION: `getapp-project-management.config.delete-draft-revision${region}`,
     CHECK_HEALTH: `getapp-project-management.check-health${region}`
 } as const
 

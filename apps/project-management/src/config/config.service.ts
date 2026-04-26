@@ -244,18 +244,6 @@ export class ConfigService {
     draft.appliedAt = new Date();
     await this.revisionRepo.save(draft);
 
-    // Create a fresh empty draft for subsequent edits
-    const maxResult = await this.revisionRepo
-      .createQueryBuilder('r')
-      .select('MAX(r.revisionNumber)', 'max')
-      .where('r.projectId = :projectId', { projectId: project.id })
-      .getRawOne<{ max: number | null }>();
-    const nextNumber = (maxResult?.max ?? 0) + 1;
-
-    await this.revisionRepo.save(
-      this.revisionRepo.create({ projectId: project.id, revisionNumber: nextNumber, status: ConfigRevisionStatus.DRAFT }),
-    );
-
     this.logger.log(`Applied revision ${draft.id} (rev#${draft.revisionNumber}) for project ${project.id}`);
 
     // Cascade: if a config map was applied, re-publish all associated device config projects
@@ -288,6 +276,94 @@ export class ConfigService {
     });
     if (!revision) throw new NotFoundException(`Revision ${dto.revisionId} not found`);
     return this.mapRevisionToDto(revision, dto.includeGroups ?? false);
+  }
+
+  async createDraftRevision(dto: { projectIdentifier: number | string }): Promise<ConfigRevisionDto> {
+    const project = await this.requireProject(dto.projectIdentifier, [
+      ProjectType.CONFIG,
+      ProjectType.CONFIG_MAP,
+    ]);
+
+    const existing = await this.revisionRepo.findOne({
+      where: { projectId: project.id, status: ConfigRevisionStatus.DRAFT },
+    });
+    if (existing) throw new BadRequestException(`A draft revision already exists for project '${dto.projectIdentifier}'`);
+
+    const maxResult = await this.revisionRepo
+      .createQueryBuilder('r')
+      .select('MAX(r.revisionNumber)', 'max')
+      .where('r.projectId = :projectId', { projectId: project.id })
+      .getRawOne<{ max: number | null }>();
+    const nextNumber = (maxResult?.max ?? 0) + 1;
+
+    const draft = await this.revisionRepo.save(
+      this.revisionRepo.create({ projectId: project.id, revisionNumber: nextNumber, status: ConfigRevisionStatus.DRAFT }),
+    );
+
+    // Copy groups and entries from the latest published revision (ACTIVE → ARCHIVED fallback)
+    const source =
+      (await this.revisionRepo.findOne({
+        where: { projectId: project.id, status: ConfigRevisionStatus.ACTIVE },
+        relations: { groups: { entries: true } },
+      })) ??
+      (await this.revisionRepo.findOne({
+        where: { projectId: project.id, status: ConfigRevisionStatus.ARCHIVED },
+        order: { revisionNumber: 'DESC' },
+        relations: { groups: { entries: true } },
+      }));
+
+    if (source?.groups?.length) {
+      await this.groupRepo.save(
+        source.groups.map((g) =>
+          this.groupRepo.create({
+            revisionId: draft.id,
+            name: g.name,
+            isGlobal: g.isGlobal,
+            gitFilePath: g.gitFilePath,
+            entries: g.entries.map((e) =>
+              this.entryRepo.create({ key: e.key, value: e.value, isSensitive: e.isSensitive }),
+            ),
+          }),
+        ),
+      );
+      draft.groups = await this.groupRepo.find({ where: { revisionId: draft.id }, relations: { entries: true } });
+    }
+
+    this.logger.log(
+      `Created draft revision ${draft.id} (rev#${draft.revisionNumber}) for project ${project.id}` +
+        (source ? ` (copied from rev#${source.revisionNumber})` : ''),
+    );
+    return this.mapRevisionToDto(draft, false);
+  }
+
+  async deleteDraftRevision(dto: { projectIdentifier: number | string }): Promise<{ success: boolean }> {
+    const project = await this.requireProject(dto.projectIdentifier, [
+      ProjectType.CONFIG,
+      ProjectType.CONFIG_MAP,
+    ]);
+
+    const draft = await this.revisionRepo.findOne({
+      where: { projectId: project.id, status: ConfigRevisionStatus.DRAFT },
+      relations: { groups: { entries: true } },
+    });
+    if (!draft) throw new NotFoundException(`No draft revision found for project '${dto.projectIdentifier}'`);
+
+    // Clean up Vault secrets for sensitive entries before deleting
+    if (this.vaultService.isEnabled) {
+      for (const group of draft.groups ?? []) {
+        for (const entry of group.entries ?? []) {
+          if (entry.isSensitive && this.vaultService.isVaultRef(entry.value)) {
+            await this.vaultService.deleteSecret(CONFIG_VAULT_SECRET_NAME(entry.id), CONFIG_VAULT_FIELD).catch((err) =>
+              this.logger.warn(`Failed to delete Vault secret for entry ${entry.id}: ${(err as Error)?.message}`),
+            );
+          }
+        }
+      }
+    }
+
+    await this.revisionRepo.remove(draft);
+    this.logger.log(`Deleted draft revision ${draft.id} for project ${project.id}`);
+    return { success: true };
   }
 
   // ---------------------------------------------------------------------------

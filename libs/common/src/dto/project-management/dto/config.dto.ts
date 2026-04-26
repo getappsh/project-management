@@ -166,6 +166,18 @@ export class ApplyConfigRevisionDto {
   appliedBy?: string;
 }
 
+export class CreateDraftRevisionDto {
+  @ApiProperty({ description: 'Project identifier (id or name)' })
+  @IsNotEmpty()
+  projectIdentifier: number | string;
+}
+
+export class DeleteDraftRevisionDto {
+  @ApiProperty({ description: 'Project identifier (id or name)' })
+  @IsNotEmpty()
+  projectIdentifier: number | string;
+}
+
 export class GetConfigRevisionsDto {
   @ApiProperty({ description: 'Project identifier (id or name)' })
   @IsNotEmpty()
