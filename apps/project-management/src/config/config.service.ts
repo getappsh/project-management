@@ -444,6 +444,8 @@ export class ConfigService {
 
       // Create the first draft revision with the 3 default groups
       await this.provisionDefaultConfigProject(project.id);
+      // Pre-populate from associated config maps and publish the initial revision
+      await this.autoPublishInitialRevision(project.id, deviceId);
     }
 
     return project.id;
@@ -467,6 +469,82 @@ export class ConfigService {
         this.groupRepo.create({ revisionId: draft.id, name, isGlobal: false, gitFilePath: null }),
       );
     }
+  }
+
+  /**
+   * Pre-populates the draft revision with entries from all applicable config maps
+   * (global + device-type + device-id associations), then promotes it to ACTIVE
+   * and creates a fresh DRAFT for subsequent edits.
+   * Called once at project creation time.
+   */
+  private async autoPublishInitialRevision(projectId: number, deviceId: string): Promise<void> {
+    const draft = await this.revisionRepo.findOne({
+      where: { projectId, status: ConfigRevisionStatus.DRAFT },
+      relations: { groups: { entries: true } },
+    });
+    if (!draft) return;
+
+    // Resolve device types so we can find applicable config map associations
+    const device = await this.deviceRepo.findOne({ where: { ID: deviceId }, relations: { deviceType: true } });
+    const deviceTypeIds = device?.deviceType?.map((dt) => dt.id) ?? [];
+
+    const applicableAssocs = await this.assocRepo.find({
+      where: [
+        { deviceTypeId: IsNull(), deviceId: IsNull(), configProjectId: IsNull() }, // global
+        ...(deviceTypeIds.length > 0 ? [{ deviceTypeId: In(deviceTypeIds) }] : []),
+        { deviceId }, // direct device association
+      ],
+    });
+
+    if (applicableAssocs.length > 0) {
+      const configMapProjectIds = [...new Set(applicableAssocs.map((a) => a.configMapProjectId))];
+      const activeRevisions = await this.revisionRepo.find({
+        where: { projectId: In(configMapProjectIds), status: ConfigRevisionStatus.ACTIVE },
+        relations: { groups: { entries: true } },
+      });
+
+      // Accumulate merged entries per group name (later config map wins on key conflict)
+      const groupMeta = new Map<string, { isGlobal: boolean; gitFilePath: string | null }>();
+      const groupEntries = new Map<string, Map<string, { value: string | null; isSensitive: boolean }>>();
+
+      for (const rev of activeRevisions) {
+        for (const cmGroup of rev.groups) {
+          if (!groupEntries.has(cmGroup.name)) {
+            groupMeta.set(cmGroup.name, { isGlobal: cmGroup.isGlobal, gitFilePath: cmGroup.gitFilePath });
+            groupEntries.set(cmGroup.name, new Map());
+          }
+          for (const e of cmGroup.entries ?? []) {
+            groupEntries.get(cmGroup.name)!.set(e.key, { value: e.value, isSensitive: e.isSensitive });
+          }
+        }
+      }
+
+      for (const [groupName, entries] of groupEntries) {
+        let draftGroup = draft.groups?.find((g) => g.name === groupName);
+        if (!draftGroup) {
+          const meta = groupMeta.get(groupName)!;
+          draftGroup = await this.groupRepo.save(
+            this.groupRepo.create({ revisionId: draft.id, name: groupName, isGlobal: meta.isGlobal, gitFilePath: meta.gitFilePath }),
+          );
+        }
+        if (entries.size > 0) {
+          const toSave = [...entries.entries()].map(([key, { value, isSensitive }]) =>
+            this.entryRepo.create({ groupId: draftGroup!.id, key, value, isSensitive }),
+          );
+          await this.entryRepo.save(toSave);
+        }
+      }
+    }
+
+    // Promote draft → active (use update to avoid cascade-clearing the groups relation)
+    await this.revisionRepo.update(draft.id, { status: ConfigRevisionStatus.ACTIVE, appliedAt: new Date() });
+
+    // Create fresh empty draft for subsequent edits
+    await this.revisionRepo.save(
+      this.revisionRepo.create({ projectId, revisionNumber: draft.revisionNumber + 1, status: ConfigRevisionStatus.DRAFT }),
+    );
+
+    this.logger.log(`Auto-published initial revision for config project of device ${deviceId}`);
   }
 
   // ---------------------------------------------------------------------------
