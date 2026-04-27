@@ -145,7 +145,7 @@ export class ConfigService {
     return this.mapGroupToDto(group);
   }
 
-  async deleteGroup(dto: DeleteConfigGroupDto): Promise<void> {
+  async deleteGroup(dto: DeleteConfigGroupDto): Promise<{ success: boolean }> {
     const project = await this.requireProject(dto.projectIdentifier, [
       ProjectType.CONFIG,
       ProjectType.CONFIG_MAP,
@@ -154,6 +154,7 @@ export class ConfigService {
     const group = await this.groupRepo.findOne({ where: { revisionId: draft.id, name: dto.groupName } });
     if (!group) throw new NotFoundException(`Group '${dto.groupName}' not found in draft revision`);
     await this.groupRepo.remove(group);
+    return { success: true };
   }
 
   async upsertEntry(dto: UpsertConfigEntryDto): Promise<ConfigEntryDto> {
@@ -197,7 +198,7 @@ export class ConfigService {
     return this.mapEntryToDto(saved, false /* never expose vault ref in response */);
   }
 
-  async deleteEntry(dto: DeleteConfigEntryDto): Promise<void> {
+  async deleteEntry(dto: DeleteConfigEntryDto): Promise<{ success: boolean }> {
     const project = await this.requireProject(dto.projectIdentifier, [
       ProjectType.CONFIG,
       ProjectType.CONFIG_MAP,
@@ -214,6 +215,7 @@ export class ConfigService {
     }
 
     await this.entryRepo.remove(entry);
+    return { success: true };
   }
 
   // ---------------------------------------------------------------------------
