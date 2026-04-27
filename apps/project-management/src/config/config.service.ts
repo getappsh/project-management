@@ -798,16 +798,31 @@ export class ConfigService {
     }
 
     // --- Merge: configMap + device config (device overrides), then apply global entries ---
+    // Groups with the same name are merged; device config wins on key conflicts.
+    // A key set to null/undefined by the device config project acts as a tombstone –
+    // it removes that key from the final output entirely.
     const mergedGroups: Record<string, Record<string, string | null>> = {};
     const allGroupNames = new Set([...Object.keys(configMapGroups), ...Object.keys(deviceGroups)]);
     const combinedGlobals = { ...globalConfigMapEntries, ...globalDeviceEntries };
 
     for (const name of allGroupNames) {
-      mergedGroups[name] = {
+      const merged: Record<string, string | null> = {
         ...combinedGlobals,
         ...(configMapGroups[name] ?? {}),
         ...(deviceGroups[name] ?? {}),
       };
+
+      // Remove tombstoned keys: device config project explicitly set key to null/undefined
+      const deviceEntries = deviceGroups[name];
+      if (deviceEntries) {
+        for (const [key, value] of Object.entries(deviceEntries)) {
+          if (value == null) {
+            delete merged[key];
+          }
+        }
+      }
+
+      mergedGroups[name] = merged;
     }
 
     // --- S3 cache (no secrets) ---
