@@ -814,13 +814,11 @@ export class ConfigService {
         ...(deviceGroups[name] ?? {}),
       };
 
-      // Remove tombstoned keys: device config project explicitly set key to null/undefined
-      const deviceEntries = deviceGroups[name];
-      if (deviceEntries) {
-        for (const [key, value] of Object.entries(deviceEntries)) {
-          if (value == null) {
-            delete merged[key];
-          }
+      // Remove tombstoned/null keys: any entry with null, undefined, or the strings "null"/"undefined"
+      for (const key of Object.keys(merged)) {
+        const value = merged[key];
+        if (value == null || value === 'null' || value === 'undefined') {
+          delete merged[key];
         }
       }
 
