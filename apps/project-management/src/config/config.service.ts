@@ -767,7 +767,8 @@ export class ConfigService {
         const globalsEntries = this.collectGlobals(rev.groups);
         for (const group of rev.groups) {
           if (group.isGlobal) continue;
-          const groupEntries = await this.resolveGroupEntries(group.entries, { ...globalsEntries }, resolveSecrets);
+          // Always build without resolving secrets so the cache payload is always secret-free
+          const groupEntries = await this.resolveGroupEntries(group.entries, { ...globalsEntries }, false);
           configMapGroups[group.name] = { ...(configMapGroups[group.name] ?? {}), ...groupEntries };
         }
         Object.assign(globalConfigMapEntries, globalsEntries);
@@ -793,7 +794,8 @@ export class ConfigService {
 
         for (const group of activeRevision.groups) {
           if (group.isGlobal) continue;
-          const groupEntries = await this.resolveGroupEntries(group.entries, { ...globalsEntries }, resolveSecrets);
+          // Always build without resolving secrets so the cache payload is always secret-free
+          const groupEntries = await this.resolveGroupEntries(group.entries, { ...globalsEntries }, false);
           deviceGroups[group.name] = groupEntries;
         }
       }
@@ -825,17 +827,25 @@ export class ConfigService {
       mergedGroups[name] = merged;
     }
 
-    // --- S3 cache (no secrets) ---
-    if (!resolveSecrets) {
-      const hash = this.cacheService.computeConfigHash(contributingRevisionIds);
-      const cached = await this.cacheService.get(deviceId, hash);
-      if (cached) return cached as DeviceConfigDto;
-      const payload: DeviceConfigDto = { deviceId, configRevisionId, groups: mergedGroups, computedAt: new Date().toISOString() };
-      await this.cacheService.set(deviceId, hash, payload as any);
-      return payload;
+    // --- S3 cache (always stored without secrets) ---
+    const hash = this.cacheService.computeConfigHash(contributingRevisionIds);
+    const cached = await this.cacheService.get(deviceId, hash);
+
+    let cachedPayload: DeviceConfigDto;
+    if (cached) {
+      cachedPayload = cached as DeviceConfigDto;
+    } else {
+      cachedPayload = { deviceId, configRevisionId, groups: mergedGroups, computedAt: new Date().toISOString() };
+      await this.cacheService.set(deviceId, hash, cachedPayload as any);
     }
 
-    return { deviceId, configRevisionId, groups: mergedGroups, computedAt: new Date().toISOString() };
+    // --- Enrich vault refs after serving from cache (never stored in S3) ---
+    if (resolveSecrets) {
+      const enrichedGroups = await this.resolveVaultRefsInGroups(cachedPayload.groups);
+      return { ...cachedPayload, groups: enrichedGroups };
+    }
+
+    return cachedPayload;
   }
 
   /**
@@ -885,6 +895,34 @@ export class ConfigService {
         // use this for building the structure; resolution happens per-group
         result[entry.key] = entry.value;
       }
+    }
+    return result;
+  }
+
+  /**
+   * Scans every value in the merged groups map for Vault references and resolves
+   * them to plaintext. Used to enrich the cached (secret-free) payload before
+   * returning it to a caller that has requested secret resolution.
+   * The cached object itself is never mutated.
+   */
+  private async resolveVaultRefsInGroups(
+    groups: Record<string, Record<string, string | null>>,
+  ): Promise<Record<string, Record<string, string | null>>> {
+    const result: Record<string, Record<string, string | null>> = {};
+    for (const [groupName, entries] of Object.entries(groups)) {
+      const resolved: Record<string, string | null> = {};
+      for (const [key, value] of Object.entries(entries)) {
+        if (value != null && this.vaultService.isVaultRef(value)) {
+          try {
+            resolved[key] = (await this.vaultService.resolveSecret(value)) ?? null;
+          } catch {
+            resolved[key] = null;
+          }
+        } else {
+          resolved[key] = value;
+        }
+      }
+      result[groupName] = resolved;
     }
     return result;
   }
