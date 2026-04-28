@@ -296,6 +296,20 @@ export class ConfigService implements OnModuleInit {
     return this.mapRevisionToDto(draft, true);
   }
 
+  async getActiveConfigSemVerForDevice(deviceId: string): Promise<{ semVer: string | null }> {
+    const projectName = `config:${deviceId}`;
+    const configProject = await this.projectRepo.findOne({
+      where: { name: projectName, projectType: ProjectType.CONFIG },
+      select: ['id'],
+    });
+    if (!configProject) return { semVer: null };
+    const revision = await this.revisionRepo.findOne({
+      where: { projectId: configProject.id, status: ConfigRevisionStatus.ACTIVE },
+      select: ['semVer'],
+    });
+    return { semVer: revision?.semVer ?? null };
+  }
+
   async getRevisions(dto: GetConfigRevisionsDto): Promise<ConfigRevisionDto[]> {
     const project = await this.requireProject(dto.projectIdentifier, [
       ProjectType.CONFIG,

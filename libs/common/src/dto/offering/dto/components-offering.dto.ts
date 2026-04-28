@@ -134,6 +134,16 @@ export class DeviceComponentsOfferingDto {
   @IsArray()
   restrictions: RestrictionDto[]
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'The semVer of the latest ACTIVE config revision for this device. The device should compare this with its locally cached version and fetch from GET /v2/device/device-config/:deviceId if they differ.',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  latestConfigSemVer?: string | null;
+
 
   toString() {
     return JSON.stringify(this)
