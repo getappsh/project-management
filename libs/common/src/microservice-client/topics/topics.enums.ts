@@ -265,6 +265,10 @@ export const DeviceTopics = {
     GET_DEVICE_RESTRICTIONS: `getapp-device.get-device-restrictions${region}`,
     // OS
     GET_ALL_OS: `getapp-device.get-all-os${region}`,
+    // Config helper queries (used by project-management service)
+    GET_DEVICE_TYPE_IDS_FOR_DEVICE: `getapp-device.get-device-type-ids${region}`,
+    GET_DEVICE_IDS_BY_TYPE_IDS: `getapp-device.get-device-ids-by-type-ids${region}`,
+    GET_ALL_DEVICE_IDS: `getapp-device.get-all-device-ids${region}`,
 } as const
 
 export const DeviceTopicsEmit = {

@@ -1,8 +1,11 @@
-import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { DeviceEntity, ProjectEntity, ProjectType } from '@app/common/database/entities';
+import { ProjectEntity, ProjectType } from '@app/common/database/entities';
 import { ConfigService } from './config.service';
+import { MicroserviceClient, MicroserviceName } from '@app/common/microservice-client';
+import { DeviceTopics } from '@app/common/microservice-client/topics';
+import { lastValueFrom } from 'rxjs';
 
 /**
  * Runs once on application startup.
@@ -24,11 +27,10 @@ export class ConfigProjectProvisioningService implements OnApplicationBootstrap 
   private readonly logger = new Logger(ConfigProjectProvisioningService.name);
 
   constructor(
-    @InjectRepository(DeviceEntity)
-    private readonly deviceRepo: Repository<DeviceEntity>,
     @InjectRepository(ProjectEntity)
     private readonly projectRepo: Repository<ProjectEntity>,
     private readonly configService: ConfigService,
+    @Inject(MicroserviceName.DEVICE_SERVICE) private readonly deviceClient: MicroserviceClient,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -41,8 +43,10 @@ export class ConfigProjectProvisioningService implements OnApplicationBootstrap 
   }
 
   private async provisionAll(): Promise<void> {
-    const devices = await this.deviceRepo.find();
-    if (devices.length === 0) return;
+    const deviceIds = await lastValueFrom(
+      this.deviceClient.send<string[]>(DeviceTopics.GET_ALL_DEVICE_IDS, {}),
+    ).catch(() => [] as string[]);
+    if (deviceIds.length === 0) return;
 
     // Fetch all existing config project names in one query to avoid N+1 lookups
     const existingProjects = await this.projectRepo.find({
@@ -51,19 +55,19 @@ export class ConfigProjectProvisioningService implements OnApplicationBootstrap 
     });
     const existingNames = new Set(existingProjects.map((p) => p.name));
 
-    const toProvision = devices.filter((d) => !existingNames.has(`config:${d.ID}`));
+    const toProvision = deviceIds.filter((id) => !existingNames.has(`config:${id}`));
 
     this.logger.log(
-      `Config project provisioning: ${devices.length} device(s) total, ` +
-      `${devices.length - toProvision.length} already provisioned, ` +
+      `Config project provisioning: ${deviceIds.length} device(s) total, ` +
+      `${deviceIds.length - toProvision.length} already provisioned, ` +
       `${toProvision.length} to create.`,
     );
 
     if (toProvision.length === 0) return;
 
     let created = 0;
-    for (const device of toProvision) {
-      await this.configService.ensureDeviceConfigProject(device.ID);
+    for (const deviceId of toProvision) {
+      await this.configService.ensureDeviceConfigProject({ deviceId });
       created++;
     }
 

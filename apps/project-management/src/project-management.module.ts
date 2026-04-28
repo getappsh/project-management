@@ -1,5 +1,5 @@
 import { DatabaseModule, UploadJwtConfigService,  } from '@app/common';
-import { MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity, PlatformEntity, LabelEntity, ConfigRevisionEntity, ConfigGroupEntity, ConfigEntryEntity, ConfigMapAssociationEntity, DeviceTypeEntity } from '@app/common/database/entities';
+import { MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity, PlatformEntity, LabelEntity, ConfigRevisionEntity, ConfigGroupEntity, ConfigEntryEntity, ConfigMapAssociationEntity } from '@app/common/database/entities';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -37,12 +37,17 @@ import { S3Module } from '@app/common/AWS/s3.module';
       MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, 
       RegulationEntity, RegulationTypeEntity, PlatformEntity,
       DeviceEntity, ProjectTokenEntity, DocEntity, LabelEntity,
-      ConfigRevisionEntity, ConfigGroupEntity, ConfigEntryEntity, ConfigMapAssociationEntity, DeviceTypeEntity,
+      ConfigRevisionEntity, ConfigGroupEntity, ConfigEntryEntity, ConfigMapAssociationEntity,
     ]),
     OidcModule.forRoot(),
     MicroserviceModule.register({
       name: MicroserviceName.UPLOAD_SERVICE,
       type: MicroserviceType.UPLOAD,
+      id: "project-management"
+    }),
+    MicroserviceModule.register({
+      name: MicroserviceName.DEVICE_SERVICE,
+      type: MicroserviceType.DEVICE,
       id: "project-management"
     }),
     SafeCronModule,

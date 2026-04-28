@@ -1,8 +1,10 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Repository } from 'typeorm';
@@ -12,8 +14,6 @@ import {
   ConfigMapAssociationEntity,
   ConfigRevisionEntity,
   ConfigRevisionStatus,
-  DeviceEntity,
-  DeviceTypeEntity,
   ProjectEntity,
   ProjectType,
 } from '@app/common/database/entities';
@@ -39,12 +39,15 @@ import {
 } from '@app/common/dto/project-management';
 import { VaultService } from '@app/common/vault';
 import { ConfigCacheService } from './config-cache.service';
+import { MicroserviceClient, MicroserviceName } from '@app/common/microservice-client';
+import { DeviceTopics, DevicesHierarchyTopics } from '@app/common/microservice-client/topics';
+import { lastValueFrom } from 'rxjs';
 
 const CONFIG_VAULT_SECRET_NAME = (entryId: number) => `config-entry-${entryId}`;
 const CONFIG_VAULT_FIELD = 'config_value' as const;
 
 @Injectable()
-export class ConfigService {
+export class ConfigService implements OnModuleInit {
   private readonly logger = new Logger(ConfigService.name);
 
   constructor(
@@ -53,11 +56,20 @@ export class ConfigService {
     @InjectRepository(ConfigGroupEntity) private readonly groupRepo: Repository<ConfigGroupEntity>,
     @InjectRepository(ConfigEntryEntity) private readonly entryRepo: Repository<ConfigEntryEntity>,
     @InjectRepository(ConfigMapAssociationEntity) private readonly assocRepo: Repository<ConfigMapAssociationEntity>,
-    @InjectRepository(DeviceEntity) private readonly deviceRepo: Repository<DeviceEntity>,
-    @InjectRepository(DeviceTypeEntity) private readonly deviceTypeRepo: Repository<DeviceTypeEntity>,
     private readonly vaultService: VaultService,
     private readonly cacheService: ConfigCacheService,
+    @Inject(MicroserviceName.DEVICE_SERVICE) private readonly deviceClient: MicroserviceClient,
   ) {}
+
+  async onModuleInit() {
+    this.deviceClient.subscribeToResponseOf([
+      DeviceTopics.GET_DEVICE_TYPE_IDS_FOR_DEVICE,
+      DeviceTopics.GET_DEVICE_IDS_BY_TYPE_IDS,
+      DeviceTopics.GET_ALL_DEVICE_IDS,
+      DevicesHierarchyTopics.GET_DEVICE_TYPE_BY_NAME,
+    ]);
+    await this.deviceClient.connect();
+  }
 
   // ---------------------------------------------------------------------------
   // Internal helpers
@@ -415,8 +427,9 @@ export class ConfigService {
 
     // --- Device-type association ---
     if (hasDeviceType) {
-      const dt = await this.deviceTypeRepo.findOne({ where: { id: dto.deviceTypeId } });
-      if (!dt) throw new NotFoundException(`Device type ${dto.deviceTypeId} not found`);
+      await lastValueFrom(
+        this.deviceClient.send(DevicesHierarchyTopics.GET_DEVICE_TYPE_BY_NAME, { deviceTypeId: dto.deviceTypeId }),
+      ).catch(() => { throw new NotFoundException(`Device type ${dto.deviceTypeId} not found`); });
 
       const existingDt = await this.assocRepo.findOne({
         where: { configMapProjectId: project.id, deviceTypeId: dto.deviceTypeId },
@@ -491,11 +504,10 @@ export class ConfigService {
 
     const deviceTypeIds: number[] = [];
     if (deviceId) {
-      const device = await this.deviceRepo.findOne({
-        where: { ID: deviceId },
-        relations: { deviceType: true },
-      });
-      deviceTypeIds.push(...(device?.deviceType?.map((dt) => dt.id) ?? []));
+      const ids = await lastValueFrom(
+        this.deviceClient.send<number[]>(DeviceTopics.GET_DEVICE_TYPE_IDS_FOR_DEVICE, deviceId),
+      ).catch(() => [] as number[]);
+      deviceTypeIds.push(...ids);
     }
 
     // Query: global OR device-type match OR device-id match
@@ -538,7 +550,7 @@ export class ConfigService {
    * Attaches any CONFIG_MAP projects whose associations match the device's device types.
    * Returns the project id.
    */
-  async ensureDeviceConfigProject(deviceId: string): Promise<number> {
+  async ensureDeviceConfigProject({ deviceId, deviceTypeIds }: { deviceId: string; deviceTypeIds?: number[] }): Promise<number> {
     // Config projects are named by device id convention
     const projectName = `config:${deviceId}`;
     let project = await this.projectRepo.findOne({ where: { name: projectName } });
@@ -557,7 +569,7 @@ export class ConfigService {
       // Create the first draft revision with the 3 default groups
       await this.provisionDefaultConfigProject(project.id);
       // Pre-populate from associated config maps and publish the initial revision
-      await this.autoPublishInitialRevision(project.id, deviceId);
+      await this.autoPublishInitialRevision(project.id, deviceId, deviceTypeIds);
     }
 
     return project.id;
@@ -589,11 +601,11 @@ export class ConfigService {
    * and creates a fresh DRAFT for subsequent edits.
    * Called once at project creation time.
    */
-  private async autoPublishInitialRevision(projectId: number, deviceId: string): Promise<void> {
+  private async autoPublishInitialRevision(projectId: number, deviceId: string, knownDeviceTypeIds?: number[]): Promise<void> {
     const draft = await this.revisionRepo.findOne({ where: { projectId, status: ConfigRevisionStatus.DRAFT } });
     if (!draft) return;
 
-    await this.populateDraftFromConfigMaps(draft.id, deviceId);
+    await this.populateDraftFromConfigMaps(draft.id, deviceId, knownDeviceTypeIds);
 
     // Initial revision always starts at 1.0.0
     const initialSemVer = '1.0.0';
@@ -639,12 +651,10 @@ export class ConfigService {
     // Device-type associations → expand to all devices of those types
     const typeIds = [...new Set(assocs.filter((a) => a.deviceTypeId != null).map((a) => a.deviceTypeId!))];
     if (typeIds.length > 0) {
-      const devicesByType = await this.deviceRepo
-        .createQueryBuilder('d')
-        .innerJoin('d.deviceType', 'dt', 'dt.id IN (:...typeIds)', { typeIds })
-        .select('d.ID', 'id')
-        .getRawMany<{ id: string }>();
-      for (const { id } of devicesByType) deviceIdSet.add(id);
+      const deviceIds = await lastValueFrom(
+        this.deviceClient.send<string[]>(DeviceTopics.GET_DEVICE_IDS_BY_TYPE_IDS, { typeIds }),
+      ).catch(() => [] as string[]);
+      for (const id of deviceIds) deviceIdSet.add(id);
     }
 
     if (deviceIdSet.size === 0) return;
@@ -733,9 +743,10 @@ export class ConfigService {
    * that apply to the given device (global + device-type + direct device associations).
    * If a group already exists in the draft its entries are replaced; otherwise it is created.
    */
-  private async populateDraftFromConfigMaps(draftId: number, deviceId: string): Promise<void> {
-    const device = await this.deviceRepo.findOne({ where: { ID: deviceId }, relations: { deviceType: true } });
-    const deviceTypeIds = device?.deviceType?.map((dt) => dt.id) ?? [];
+  private async populateDraftFromConfigMaps(draftId: number, deviceId: string, knownDeviceTypeIds?: number[]): Promise<void> {
+    const deviceTypeIds = knownDeviceTypeIds ?? await lastValueFrom(
+      this.deviceClient.send<number[]>(DeviceTopics.GET_DEVICE_TYPE_IDS_FOR_DEVICE, deviceId),
+    ).catch(() => [] as number[]);
 
     const applicableAssocs = await this.assocRepo.find({
       where: [
@@ -969,11 +980,9 @@ export class ConfigService {
       where: { name: projectName, projectType: ProjectType.CONFIG },
     });
 
-    const device = await this.deviceRepo.findOne({
-      where: { ID: deviceId },
-      relations: { deviceType: true },
-    });
-    const deviceTypeIds = device?.deviceType?.map((dt) => dt.id) ?? [];
+    const deviceTypeIds = await lastValueFrom(
+      this.deviceClient.send<number[]>(DeviceTopics.GET_DEVICE_TYPE_IDS_FOR_DEVICE, deviceId),
+    ).catch(() => [] as number[]);
 
     // --- ConfigMap groups (lowest priority) ---
     const configMapGroups: Record<string, Record<string, string | null>> = {};

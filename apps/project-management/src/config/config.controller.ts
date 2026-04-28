@@ -120,4 +120,9 @@ export class ConfigController {
   getDeviceConfigByVersion(@RpcPayload() dto: GetDeviceConfigByVersionDto) {
     return this.configService.getDeviceConfigByVersion(dto);
   }
+
+  @MessagePattern(ProjectManagementTopics.CONFIG_ENSURE_DEVICE_PROJECT)
+  ensureDeviceConfigProject(@RpcPayload() payload: { deviceId: string; deviceTypeIds?: number[] }) {
+    return this.configService.ensureDeviceConfigProject(payload);
+  }
 }
