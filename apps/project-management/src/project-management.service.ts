@@ -1,4 +1,4 @@
-import { MemberProjectEntity, MemberEntity, ProjectEntity, ProjectGitSourceEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity, DocEntity, PlatformEntity, ProjectType, LabelEntity } from '@app/common/database/entities';
+import { MemberProjectEntity, MemberEntity, ProjectEntity, ProjectGitSourceEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity, DocEntity, PlatformEntity, ProjectType, LabelEntity, ConfigRevisionEntity, ConfigRevisionStatus } from '@app/common/database/entities';
 import { BadRequestException, ConflictException, ForbiddenException, forwardRef, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -58,6 +58,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     @InjectRepository(DeviceEntity) private readonly deviceRepo: Repository<DeviceEntity>,
     @InjectRepository(DocEntity) private readonly docRepo: Repository<DocEntity>,
     @InjectRepository(LabelEntity) private readonly labelRepo: Repository<LabelEntity>,
+    @InjectRepository(ConfigRevisionEntity) private readonly configRevisionRepo: Repository<ConfigRevisionEntity>,
     @Inject("OidcProviderService") private readonly oidcService: OidcService,
     @Inject(MicroserviceName.UPLOAD_SERVICE) private readonly uploadClient: MicroserviceClient,
     @Inject(forwardRef(() => GitSyncService)) private readonly gitSyncService: GitSyncService,
@@ -164,6 +165,24 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       }
       return dto
     });
+
+    // Enrich CONFIG / CONFIG_MAP projects with the active revision's semVer
+    const configProjectIds = projectsEntities
+      .filter(p => p.projectType === ProjectType.CONFIG || p.projectType === ProjectType.CONFIG_MAP)
+      .map(p => p.id);
+
+    if (configProjectIds.length > 0) {
+      const activeRevisions = await this.configRevisionRepo.find({
+        where: { projectId: In(configProjectIds), status: ConfigRevisionStatus.ACTIVE },
+        select: ['projectId', 'semVer'],
+      });
+      const semVerMap = new Map(activeRevisions.map(r => [r.projectId, r.semVer ?? null]));
+      for (const dto of projects) {
+        if (dto.projectType === ProjectType.CONFIG || dto.projectType === ProjectType.CONFIG_MAP) {
+          dto.configSemVer = semVerMap.get(dto.id) ?? null;
+        }
+      }
+    }
 
     return {
       data: projects,
@@ -826,6 +845,15 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     const dto = new DetailedProjectDto().fromProjectEntity(project);
     const member = project.memberProject.find(mp => mp.member.email === email);
     dto.memberContext = member ? new ProjectMemberContextDto().fromMemberProjectEntity(member) : undefined;
+
+    if (project.projectType === ProjectType.CONFIG || project.projectType === ProjectType.CONFIG_MAP) {
+      const activeRevision = await this.configRevisionRepo.findOne({
+        where: { projectId: project.id, status: ConfigRevisionStatus.ACTIVE },
+        select: ['semVer'],
+      });
+      dto.configSemVer = activeRevision?.semVer ?? null;
+    }
+
     return dto
   }
 
