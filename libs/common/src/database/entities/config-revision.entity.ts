@@ -45,6 +45,14 @@ export class ConfigRevisionEntity {
   @Column({ name: 'applied_at', type: 'timestamptz', nullable: true })
   appliedAt: Date | null;
 
+  /**
+   * Semantic version string (e.g. "1.0.0") computed when this revision is
+   * promoted from DRAFT → ACTIVE. Null for DRAFT revisions and for any revision
+   * that existed before this feature was introduced.
+   */
+  @Column({ name: 'sem_ver', type: 'varchar', nullable: true })
+  semVer: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

@@ -186,6 +186,7 @@ export const ProjectManagementTopics = {
     CONFIG_GET_MAP_ASSOCIATIONS: `getapp-project-management.config.get-map-associations${region}`,
     CONFIG_GET_CONFIG_MAPS_FOR_PROJECT: `getapp-project-management.config.get-config-maps-for-project${region}`,
     CONFIG_GET_DEVICE_CONFIG: `getapp-project-management.config.get-device-config${region}`,
+    CONFIG_GET_DEVICE_CONFIG_BY_VERSION: `getapp-project-management.config.get-device-config-by-version${region}`,
     CONFIG_ENSURE_DEVICE_PROJECT: `getapp-project-management.config.ensure-device-project${region}`,
     CONFIG_CREATE_DRAFT_REVISION: `getapp-project-management.config.create-draft-revision${region}`,
     CONFIG_DELETE_DRAFT_REVISION: `getapp-project-management.config.delete-draft-revision${region}`,

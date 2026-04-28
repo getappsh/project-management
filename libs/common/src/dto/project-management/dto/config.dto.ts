@@ -148,6 +148,9 @@ export class ConfigRevisionDto {
   @ApiProperty({ required: false })
   appliedAt: Date | null;
 
+  @ApiProperty({ required: false, description: 'Semantic version (e.g. "1.2.0") assigned when the revision was promoted to ACTIVE. Null for draft revisions.' })
+  semVer: string | null;
+
   @ApiProperty()
   createdAt: Date;
 
@@ -289,6 +292,9 @@ export class DeviceConfigDto {
   @ApiProperty({ description: 'Revision ID of the device config project used' })
   configRevisionId: number | null;
 
+  @ApiProperty({ required: false, description: 'Semantic version of the active revision when this config was assembled' })
+  semVer: string | null;
+
   /** Group name → key-value pairs. Secrets are already resolved from vault. */
   @ApiProperty({ description: 'Assembled config groups keyed by group name' })
   groups: Record<string, ConfigGroupValuesMap>;
@@ -296,6 +302,27 @@ export class DeviceConfigDto {
   /** ISO timestamp of when this config was last computed */
   @ApiProperty()
   computedAt: string;
+}
+
+export class GetDeviceConfigByVersionDto {
+  @ApiProperty({ description: 'Device ID' })
+  @IsString()
+  @IsNotEmpty()
+  deviceId: string;
+
+  @ApiProperty({ description: 'Semantic version of the revision to retrieve (e.g. "1.2.0")' })
+  @IsString()
+  @IsNotEmpty()
+  semver: string;
+
+  /**
+   * When true (default) vault secrets are resolved to plaintext.
+   * Set to false to retrieve raw (vault-ref) values.
+   */
+  @ApiProperty({ required: false })
+  @IsBoolean()
+  @IsOptional()
+  resolveSecrets?: boolean;
 }
 
 export class GetDeviceConfigDto {

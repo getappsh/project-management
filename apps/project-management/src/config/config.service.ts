@@ -31,6 +31,7 @@ import {
   DeviceConfigDto,
   GetConfigRevisionByIdDto,
   GetConfigRevisionsDto,
+  GetDeviceConfigByVersionDto,
   GetDeviceConfigDto,
   RemoveConfigMapAssociationDto,
   UpsertConfigEntryDto,
@@ -234,10 +235,23 @@ export class ConfigService {
     });
     if (!draft) throw new NotFoundException(`No draft revision found for project '${dto.projectIdentifier}'`);
 
+    // Capture the current ACTIVE revision (and its semver) before archiving it
+    const previousActive = await this.revisionRepo.findOne({
+      where: { projectId: project.id, status: ConfigRevisionStatus.ACTIVE },
+      relations: { groups: { entries: true } },
+    });
+
     // Archive the current active revision
     await this.revisionRepo.update(
       { projectId: project.id, status: ConfigRevisionStatus.ACTIVE },
       { status: ConfigRevisionStatus.ARCHIVED },
+    );
+
+    // Compute the new semantic version by diffing draft vs previous active
+    draft.semVer = this.computeNextSemVer(
+      previousActive?.groups,
+      draft.groups ?? [],
+      previousActive?.semVer ?? null,
     );
 
     // Promote the draft to active
@@ -246,7 +260,19 @@ export class ConfigService {
     draft.appliedAt = new Date();
     await this.revisionRepo.save(draft);
 
-    this.logger.log(`Applied revision ${draft.id} (rev#${draft.revisionNumber}) for project ${project.id}`);
+    this.logger.log(
+      `Applied revision ${draft.id} (rev#${draft.revisionNumber}, v${draft.semVer}) for project ${project.id}`,
+    );
+
+    // Eagerly write the assembled config to the versioned cache for CONFIG projects
+    if (project.projectType === ProjectType.CONFIG && project.name.startsWith('config:')) {
+      const deviceId = project.name.slice('config:'.length);
+      this.assembleAndCacheDeviceConfig(deviceId, draft.semVer).catch((err) =>
+        this.logger.error(
+          `Failed to write config cache for device ${deviceId} @ ${draft.semVer}: ${(err as Error)?.message}`,
+        ),
+      );
+    }
 
     // Cascade: if a config map was applied, re-publish all associated device config projects
     if (project.projectType === ProjectType.CONFIG_MAP) {
@@ -569,8 +595,15 @@ export class ConfigService {
 
     await this.populateDraftFromConfigMaps(draft.id, deviceId);
 
+    // Initial revision always starts at 1.0.0
+    const initialSemVer = '1.0.0';
+
     // Promote draft → active (use update to avoid cascade-clearing the groups relation)
-    await this.revisionRepo.update(draft.id, { status: ConfigRevisionStatus.ACTIVE, appliedAt: new Date() });
+    await this.revisionRepo.update(draft.id, {
+      status: ConfigRevisionStatus.ACTIVE,
+      appliedAt: new Date(),
+      semVer: initialSemVer,
+    });
 
     // Create fresh empty draft for subsequent edits
     await this.revisionRepo.save(
@@ -578,6 +611,13 @@ export class ConfigService {
     );
 
     this.logger.log(`Auto-published initial revision for config project of device ${deviceId}`);
+
+    // Write the assembled config to the versioned cache (fire-and-forget)
+    this.assembleAndCacheDeviceConfig(deviceId, initialSemVer).catch((err) =>
+      this.logger.error(
+        `Failed to write initial config cache for device ${deviceId}: ${(err as Error)?.message}`,
+      ),
+    );
   }
 
   /**
@@ -632,6 +672,12 @@ export class ConfigService {
   private async refreshConfigProjectRevision(projectId: number, deviceId: string): Promise<void> {
     const draft = await this.getOrCreateDraftRevision(projectId);
 
+    // Capture the current active revision (and its semver) before clearing the draft
+    const previousActive = await this.revisionRepo.findOne({
+      where: { projectId, status: ConfigRevisionStatus.ACTIVE },
+      relations: { groups: { entries: true } },
+    });
+
     // Clear the draft entirely so we start from a clean slate
     const existingGroups = await this.groupRepo.find({ where: { revisionId: draft.id } });
     for (const g of existingGroups) {
@@ -644,6 +690,14 @@ export class ConfigService {
     // Re-populate from all applicable config maps
     await this.populateDraftFromConfigMaps(draft.id, deviceId);
 
+    // Load the freshly populated draft groups to compute the semver diff
+    const newGroups = await this.groupRepo.find({ where: { revisionId: draft.id }, relations: { entries: true } });
+    const newSemVer = this.computeNextSemVer(
+      previousActive?.groups,
+      newGroups,
+      previousActive?.semVer ?? null,
+    );
+
     // Archive the current active revision
     await this.revisionRepo.update(
       { projectId, status: ConfigRevisionStatus.ACTIVE },
@@ -651,14 +705,27 @@ export class ConfigService {
     );
 
     // Promote draft → active
-    await this.revisionRepo.update(draft.id, { status: ConfigRevisionStatus.ACTIVE, appliedAt: new Date() });
+    await this.revisionRepo.update(draft.id, {
+      status: ConfigRevisionStatus.ACTIVE,
+      appliedAt: new Date(),
+      semVer: newSemVer,
+    });
 
     // Create fresh empty draft for subsequent edits
     await this.revisionRepo.save(
       this.revisionRepo.create({ projectId, revisionNumber: draft.revisionNumber + 1, status: ConfigRevisionStatus.DRAFT }),
     );
 
-    this.logger.log(`Re-published config project for device ${deviceId} due to config map update`);
+    this.logger.log(
+      `Re-published config project for device ${deviceId} due to config map update (v${newSemVer})`,
+    );
+
+    // Write the assembled config to the versioned cache (fire-and-forget)
+    this.assembleAndCacheDeviceConfig(deviceId, newSemVer).catch((err) =>
+      this.logger.error(
+        `Failed to write config cache for device ${deviceId} @ ${newSemVer}: ${(err as Error)?.message}`,
+      ),
+    );
   }
 
   /**
@@ -729,123 +796,128 @@ export class ConfigService {
     const resolveSecrets = dto.resolveSecrets !== false;
     const { deviceId } = dto;
 
-    // Find the device's config project
+    // Find the ACTIVE revision for this device's config project to get its semVer
     const projectName = `config:${deviceId}`;
-    const configProject = await this.projectRepo.findOne({ where: { name: projectName, projectType: ProjectType.CONFIG } });
-
-    // Find device types for this device to look up applicable configMaps
-    const device = await this.deviceRepo.findOne({
-      where: { ID: deviceId },
-      relations: { deviceType: true },
-    });
-    const deviceTypeIds = device?.deviceType?.map((dt) => dt.id) ?? [];
-
-    // Collect the revision IDs that contribute to the final config (for cache hashing)
-    const contributingRevisionIds: number[] = [];
-
-    // --- ConfigMap groups (lowest priority, device config can override) ---
-    const configMapGroups: Record<string, Record<string, string | null>> = {};
-    const globalConfigMapEntries: Record<string, string | null> = {};
-
-    const applicableAssocs = await this.assocRepo.find({
-      where: [
-        { deviceTypeId: IsNull(), deviceId: IsNull(), configProjectId: IsNull() }, // global
-        ...(deviceTypeIds.length > 0 ? [{ deviceTypeId: In(deviceTypeIds) }] : []),
-        { deviceId }, // device-id direct association
-      ],
+    const configProject = await this.projectRepo.findOne({
+      where: { name: projectName, projectType: ProjectType.CONFIG },
     });
 
-    if (applicableAssocs.length > 0) {
-      const configMapProjectIds = [...new Set(applicableAssocs.map((a) => a.configMapProjectId))];
-      const activeRevisions = await this.revisionRepo.find({
-        where: { projectId: In(configMapProjectIds), status: ConfigRevisionStatus.ACTIVE },
-        relations: { groups: { entries: true } },
-      });
+    const activeSemVer = configProject
+      ? (
+          await this.revisionRepo.findOne({
+            where: { projectId: configProject.id, status: ConfigRevisionStatus.ACTIVE },
+            select: ['semVer'],
+          })
+        )?.semVer ?? null
+      : null;
 
-      for (const rev of activeRevisions) {
-        contributingRevisionIds.push(rev.id);
-        const globalsEntries = this.collectGlobals(rev.groups);
-        for (const group of rev.groups) {
-          if (group.isGlobal) continue;
-          // Always build without resolving secrets so the cache payload is always secret-free
-          const groupEntries = await this.resolveGroupEntries(group.entries, { ...globalsEntries }, false);
-          configMapGroups[group.name] = { ...(configMapGroups[group.name] ?? {}), ...groupEntries };
+    // Try versioned cache first
+    if (activeSemVer) {
+      const cached = await this.cacheService.getByVersion(deviceId, activeSemVer);
+      if (cached) {
+        const cachedPayload = cached as DeviceConfigDto;
+        if (resolveSecrets) {
+          const enrichedGroups = await this.resolveVaultRefsInGroups(cachedPayload.groups);
+          return { ...cachedPayload, groups: enrichedGroups };
         }
-        Object.assign(globalConfigMapEntries, globalsEntries);
+        return cachedPayload;
       }
     }
 
-    // --- Device config project groups (higher priority, override configMap values) ---
-    const deviceGroups: Record<string, Record<string, string | null>> = {};
-    const globalDeviceEntries: Record<string, string | null> = {};
-    let configRevisionId: number | null = null;
+    // Cache miss – assemble the config fresh
+    const assembled = await this.buildDeviceConfigPayload(deviceId);
 
-    if (configProject) {
-      const activeRevision = await this.revisionRepo.findOne({
-        where: { projectId: configProject.id, status: ConfigRevisionStatus.ACTIVE },
-        relations: { groups: { entries: true } },
-      });
-
-      if (activeRevision) {
-        configRevisionId = activeRevision.id;
-        contributingRevisionIds.push(activeRevision.id);
-        const globalsEntries = this.collectGlobals(activeRevision.groups);
-        Object.assign(globalDeviceEntries, globalsEntries);
-
-        for (const group of activeRevision.groups) {
-          if (group.isGlobal) continue;
-          // Always build without resolving secrets so the cache payload is always secret-free
-          const groupEntries = await this.resolveGroupEntries(group.entries, { ...globalsEntries }, false);
-          deviceGroups[group.name] = groupEntries;
-        }
-      }
+    // Persist to versioned cache if we have a semver (fire-and-forget on errors)
+    if (activeSemVer) {
+      this.cacheService.setByVersion(deviceId, activeSemVer, assembled as any).catch((err: any) =>
+        this.logger.warn(`Config cache write failed for device ${deviceId}: ${err.message}`),
+      );
     }
 
-    // --- Merge: configMap + device config (device overrides), then apply global entries ---
-    // Groups with the same name are merged; device config wins on key conflicts.
-    // A key set to null/undefined by the device config project acts as a tombstone –
-    // it removes that key from the final output entirely.
-    const mergedGroups: Record<string, Record<string, string | null>> = {};
-    const allGroupNames = new Set([...Object.keys(configMapGroups), ...Object.keys(deviceGroups)]);
-    const combinedGlobals = { ...globalConfigMapEntries, ...globalDeviceEntries };
-
-    for (const name of allGroupNames) {
-      const merged: Record<string, string | null> = {
-        ...combinedGlobals,
-        ...(configMapGroups[name] ?? {}),
-        ...(deviceGroups[name] ?? {}),
-      };
-
-      // Remove tombstoned/null keys: any entry with null, undefined, or the strings "null"/"undefined"
-      for (const key of Object.keys(merged)) {
-        const value = merged[key];
-        if (value == null || value === 'null' || value === 'undefined') {
-          delete merged[key];
-        }
-      }
-
-      mergedGroups[name] = merged;
-    }
-
-    // --- S3 cache (always stored without secrets) ---
-    const hash = this.cacheService.computeConfigHash(contributingRevisionIds);
-    const cached = await this.cacheService.get(deviceId, hash);
-
-    let cachedPayload: DeviceConfigDto;
-    if (cached) {
-      cachedPayload = cached as DeviceConfigDto;
-    } else {
-      cachedPayload = { deviceId, configRevisionId, groups: mergedGroups, computedAt: new Date().toISOString() };
-      await this.cacheService.set(deviceId, hash, cachedPayload as any);
-    }
-
-    // --- Enrich vault refs after serving from cache (never stored in S3) ---
     if (resolveSecrets) {
-      const enrichedGroups = await this.resolveVaultRefsInGroups(cachedPayload.groups);
-      return { ...cachedPayload, groups: enrichedGroups };
+      const enrichedGroups = await this.resolveVaultRefsInGroups(assembled.groups);
+      return { ...assembled, groups: enrichedGroups };
     }
 
-    return cachedPayload;
+    return assembled;
+  }
+
+  /**
+   * Returns the assembled device config for a specific previously-published
+   * semver. Prefers the versioned S3 cache; falls back to reconstructing from
+   * the stored revision groups when the cache entry is absent.
+   */
+  async getDeviceConfigByVersion(dto: GetDeviceConfigByVersionDto): Promise<DeviceConfigDto> {
+    const resolveSecrets = dto.resolveSecrets !== false;
+
+    // 1. Try versioned cache
+    const cached = await this.cacheService.getByVersion(dto.deviceId, dto.semver);
+    if (cached) {
+      const cachedPayload = cached as DeviceConfigDto;
+      if (resolveSecrets) {
+        const enrichedGroups = await this.resolveVaultRefsInGroups(cachedPayload.groups);
+        return { ...cachedPayload, groups: enrichedGroups };
+      }
+      return cachedPayload;
+    }
+
+    // 2. Cache miss – reconstruct from the stored revision
+    const projectName = `config:${dto.deviceId}`;
+    const configProject = await this.projectRepo.findOne({
+      where: { name: projectName, projectType: ProjectType.CONFIG },
+    });
+    if (!configProject) {
+      throw new NotFoundException(`No config project found for device '${dto.deviceId}'`);
+    }
+
+    const revision = await this.revisionRepo.findOne({
+      where: { projectId: configProject.id, semVer: dto.semver },
+      relations: { groups: { entries: true } },
+    });
+    if (!revision) {
+      throw new NotFoundException(
+        `No revision with semver '${dto.semver}' found for device '${dto.deviceId}'`,
+      );
+    }
+
+    // Reconstruct the assembled config from the stored snapshot groups
+    const globalsEntries = this.collectGlobals(revision.groups);
+    const groups: Record<string, Record<string, string | null>> = {};
+
+    for (const group of revision.groups) {
+      if (group.isGlobal) continue;
+      const groupEntries = await this.resolveGroupEntries(group.entries, { ...globalsEntries }, false);
+      // Remove tombstones
+      for (const key of Object.keys(groupEntries)) {
+        const val = groupEntries[key];
+        if (val == null || val === 'null' || val === 'undefined') {
+          delete groupEntries[key];
+        }
+      }
+      groups[group.name] = groupEntries;
+    }
+
+    const payload: DeviceConfigDto = {
+      deviceId: dto.deviceId,
+      configRevisionId: revision.id,
+      semVer: revision.semVer,
+      groups,
+      computedAt: revision.appliedAt?.toISOString() ?? revision.createdAt.toISOString(),
+    };
+
+    // Write the reconstructed payload back to cache for future requests
+    this.cacheService.setByVersion(dto.deviceId, dto.semver, payload as any).catch((err: any) =>
+      this.logger.warn(
+        `Config cache write (reconstruction) failed for device ${dto.deviceId} @ ${dto.semver}: ${err.message}`,
+      ),
+    );
+
+    if (resolveSecrets) {
+      const enrichedGroups = await this.resolveVaultRefsInGroups(payload.groups);
+      return { ...payload, groups: enrichedGroups };
+    }
+
+    return payload;
   }
 
   /**
@@ -885,6 +957,206 @@ export class ConfigService {
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
+
+  /**
+   * Assembles the final device config payload (without resolving vault secrets)
+   * by merging CONFIG_MAP baseline + device config project overrides.
+   * This is the single source of truth for what goes into the S3 cache.
+   */
+  private async buildDeviceConfigPayload(deviceId: string): Promise<DeviceConfigDto> {
+    const projectName = `config:${deviceId}`;
+    const configProject = await this.projectRepo.findOne({
+      where: { name: projectName, projectType: ProjectType.CONFIG },
+    });
+
+    const device = await this.deviceRepo.findOne({
+      where: { ID: deviceId },
+      relations: { deviceType: true },
+    });
+    const deviceTypeIds = device?.deviceType?.map((dt) => dt.id) ?? [];
+
+    // --- ConfigMap groups (lowest priority) ---
+    const configMapGroups: Record<string, Record<string, string | null>> = {};
+    const globalConfigMapEntries: Record<string, string | null> = {};
+
+    const applicableAssocs = await this.assocRepo.find({
+      where: [
+        { deviceTypeId: IsNull(), deviceId: IsNull(), configProjectId: IsNull() }, // global
+        ...(deviceTypeIds.length > 0 ? [{ deviceTypeId: In(deviceTypeIds) }] : []),
+        { deviceId }, // device-id direct association
+      ],
+    });
+
+    if (applicableAssocs.length > 0) {
+      const configMapProjectIds = [...new Set(applicableAssocs.map((a) => a.configMapProjectId))];
+      const activeRevisions = await this.revisionRepo.find({
+        where: { projectId: In(configMapProjectIds), status: ConfigRevisionStatus.ACTIVE },
+        relations: { groups: { entries: true } },
+      });
+
+      for (const rev of activeRevisions) {
+        const globalsEntries = this.collectGlobals(rev.groups);
+        for (const group of rev.groups) {
+          if (group.isGlobal) continue;
+          const groupEntries = await this.resolveGroupEntries(group.entries, { ...globalsEntries }, false);
+          configMapGroups[group.name] = { ...(configMapGroups[group.name] ?? {}), ...groupEntries };
+        }
+        Object.assign(globalConfigMapEntries, globalsEntries);
+      }
+    }
+
+    // --- Device config project groups (higher priority) ---
+    const deviceGroups: Record<string, Record<string, string | null>> = {};
+    const globalDeviceEntries: Record<string, string | null> = {};
+    let configRevisionId: number | null = null;
+    let activeSemVer: string | null = null;
+
+    if (configProject) {
+      const activeRevision = await this.revisionRepo.findOne({
+        where: { projectId: configProject.id, status: ConfigRevisionStatus.ACTIVE },
+        relations: { groups: { entries: true } },
+      });
+
+      if (activeRevision) {
+        configRevisionId = activeRevision.id;
+        activeSemVer = activeRevision.semVer;
+        const globalsEntries = this.collectGlobals(activeRevision.groups);
+        Object.assign(globalDeviceEntries, globalsEntries);
+
+        for (const group of activeRevision.groups) {
+          if (group.isGlobal) continue;
+          const groupEntries = await this.resolveGroupEntries(group.entries, { ...globalsEntries }, false);
+          deviceGroups[group.name] = groupEntries;
+        }
+      }
+    }
+
+    // --- Merge: configMap baseline + device overrides ---
+    const mergedGroups: Record<string, Record<string, string | null>> = {};
+    const allGroupNames = new Set([...Object.keys(configMapGroups), ...Object.keys(deviceGroups)]);
+    const combinedGlobals = { ...globalConfigMapEntries, ...globalDeviceEntries };
+
+    for (const name of allGroupNames) {
+      const merged: Record<string, string | null> = {
+        ...combinedGlobals,
+        ...(configMapGroups[name] ?? {}),
+        ...(deviceGroups[name] ?? {}),
+      };
+
+      // Remove tombstoned/null keys
+      for (const key of Object.keys(merged)) {
+        const value = merged[key];
+        if (value == null || value === 'null' || value === 'undefined') {
+          delete merged[key];
+        }
+      }
+
+      mergedGroups[name] = merged;
+    }
+
+    return {
+      deviceId,
+      configRevisionId,
+      semVer: activeSemVer,
+      groups: mergedGroups,
+      computedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Assembles the device config and writes it to the versioned S3 cache.
+   * Called fire-and-forget from applyRevision / cascade flows.
+   */
+  private async assembleAndCacheDeviceConfig(deviceId: string, semVer: string): Promise<void> {
+    const payload = await this.buildDeviceConfigPayload(deviceId);
+    await this.cacheService.setByVersion(deviceId, semVer, payload as any);
+  }
+
+  /**
+   * Computes the next semantic version for a config revision based on the diff
+   * between the previous ACTIVE revision's groups and the incoming draft groups.
+   *
+   * Rules (highest priority wins):
+   *   - New group added           → major bump (breaking structural change)
+   *   - Group removed             → major bump (breaking structural change)
+   *   - Entry key deleted         → major bump (breaks existing consumers)
+   *   - Entry key added           → minor bump (backward-compatible addition)
+   *   - Entry value updated       → minor bump (backward-compatible change)
+   *   - No structural change      → patch bump
+   *
+   * When there is no previous revision the initial version is `1.0.0`.
+   */
+  private computeNextSemVer(
+    prevGroups: ConfigGroupEntity[] | undefined | null,
+    draftGroups: ConfigGroupEntity[],
+    prevSemVer: string | null,
+  ): string {
+    if (!prevGroups || prevGroups.length === 0) {
+      // First publication: always start at 1.0.0
+      return '1.0.0';
+    }
+
+    let major = 0;
+    let minor = 0;
+    let patch = 0;
+    if (prevSemVer) {
+      const parts = prevSemVer.split('.').map(Number);
+      [major, minor, patch] = [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0];
+    }
+
+    // Build lookup maps: groupName → (key → value)
+    const prevMap = new Map<string, Map<string, string | null>>();
+    for (const g of prevGroups) {
+      const em = new Map<string, string | null>();
+      for (const e of g.entries ?? []) em.set(e.key, e.value);
+      prevMap.set(g.name, em);
+    }
+
+    const draftMap = new Map<string, Map<string, string | null>>();
+    for (const g of draftGroups) {
+      const em = new Map<string, string | null>();
+      for (const e of g.entries ?? []) em.set(e.key, e.value);
+      draftMap.set(g.name, em);
+    }
+
+    let hasMajorChange = false;
+    let hasMinorChange = false;
+
+    // Groups present in draft
+    for (const [groupName, draftEntries] of draftMap) {
+      const prevEntries = prevMap.get(groupName);
+      if (!prevEntries) {
+        // New group added → major
+        hasMajorChange = true;
+        continue;
+      }
+      // Compare entries within existing group
+      for (const [key, value] of draftEntries) {
+        if (!prevEntries.has(key)) {
+          hasMinorChange = true; // key added to existing group → minor
+        } else if (prevEntries.get(key) !== value) {
+          hasMinorChange = true; // key value updated → minor
+        }
+      }
+      // Keys that existed before but are now gone → major (deletion)
+      for (const key of prevEntries.keys()) {
+        if (!draftEntries.has(key)) {
+          hasMajorChange = true;
+        }
+      }
+    }
+
+    // Groups that existed before but are now removed → major
+    for (const groupName of prevMap.keys()) {
+      if (!draftMap.has(groupName)) {
+        hasMajorChange = true;
+      }
+    }
+
+    if (hasMajorChange) return `${major + 1}.0.0`;
+    if (hasMinorChange) return `${major}.${minor + 1}.0`;
+    return `${major}.${minor}.${patch + 1}`;
+  }
 
   private collectGlobals(groups: ConfigGroupEntity[]): Record<string, string | null> {
     const result: Record<string, string | null> = {};
@@ -974,6 +1246,7 @@ export class ConfigService {
       status: revision.status,
       appliedBy: revision.appliedBy,
       appliedAt: revision.appliedAt,
+      semVer: revision.semVer ?? null,
       createdAt: revision.createdAt,
       ...(includeGroups && revision.groups ? { groups: revision.groups.map((g) => this.mapGroupToDto(g)) } : {}),
     };

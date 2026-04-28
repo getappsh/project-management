@@ -12,6 +12,7 @@ import {
   DeleteDraftRevisionDto,
   GetConfigRevisionByIdDto,
   GetConfigRevisionsDto,
+  GetDeviceConfigByVersionDto,
   GetDeviceConfigDto,
   RemoveConfigMapAssociationDto,
   UpsertConfigEntryDto,
@@ -113,5 +114,10 @@ export class ConfigController {
   @MessagePattern(ProjectManagementTopics.CONFIG_GET_DEVICE_CONFIG)
   getDeviceConfig(@RpcPayload() dto: GetDeviceConfigDto) {
     return this.configService.getDeviceConfig(dto);
+  }
+
+  @MessagePattern(ProjectManagementTopics.CONFIG_GET_DEVICE_CONFIG_BY_VERSION)
+  getDeviceConfigByVersion(@RpcPayload() dto: GetDeviceConfigByVersionDto) {
+    return this.configService.getDeviceConfigByVersion(dto);
   }
 }
