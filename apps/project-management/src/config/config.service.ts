@@ -669,11 +669,22 @@ export class ConfigService implements OnModuleInit {
       relations: { groups: true },
     });
 
-    // Clear the draft entirely
-    await this.groupRepo.delete({ revisionId: draft.id });
-
-    // Re-populate from config maps
+    // Update config-map-sourced groups in the draft (creates or updates them in-place).
+    // Device-specific groups already in the draft are left completely untouched.
     await this.populateDraftFromConfigMaps(draft.id, deviceId);
+
+    // If the draft was freshly created it won't have device-specific groups yet.
+    // Clone any groups from the previous active revision that are still absent from the draft.
+    if (previousActive?.groups?.length) {
+      const draftGroupNames = new Set(
+        (await this.groupRepo.find({ where: { revisionId: draft.id }, select: ['name'] })).map((g) => g.name),
+      );
+      for (const group of previousActive.groups) {
+        if (!draftGroupNames.has(group.name)) {
+          await this.cloneGroupToRevision(group, draft.id);
+        }
+      }
+    }
 
     const newGroups = await this.groupRepo.find({ where: { revisionId: draft.id } });
     const newSemVer = this.computeNextSemVer(
