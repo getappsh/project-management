@@ -13,6 +13,7 @@ import { SeederService } from './utils/seeder.service';
 import { RegulationService } from './regulation.service';
 import { GitSyncService } from './git-sync.service';
 import { GitSyncScheduler } from './git-sync-scheduler.service';
+import { ArchiveCleanupScheduler } from './archive-cleanup-scheduler.service';
 import { PROJECT_ACCESS_SERVICE } from '@app/common/utils/project-access';
 import { MicroserviceModule, MicroserviceName, MicroserviceType } from '@app/common/microservice-client';
 import { SafeCronModule } from '@app/common/safe-cron';
@@ -45,6 +46,7 @@ import { SafeCronModule } from '@app/common/safe-cron';
     RegulationService,
     GitSyncService,
     GitSyncScheduler,
+    ArchiveCleanupScheduler,
     SeederService,
     {
       provide: PROJECT_ACCESS_SERVICE,

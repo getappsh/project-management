@@ -2,7 +2,7 @@ import { MemberProjectEntity, MemberEntity, ProjectEntity, ProjectGitSourceEntit
 import { BadRequestException, ConflictException, ForbiddenException, forwardRef, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, ILike, In } from 'typeorm';
+import { IsNull, Not, Repository, ILike, In } from 'typeorm';
 import { AddMemberToProjectDto, EditProjectMemberDto, ProjectMemberParams, ProjectMemberPreferencesDto } from '@app/common/dto/project-management/dto/project-member.dto';
 import {
   DeviceResDto, ProjectReleasesDto, ProjectTokenDto,
@@ -32,7 +32,6 @@ import { PaginatedResultDto } from '@app/common/dto/pagination.dto';
 import { ProjectAccessService } from '@app/common/utils/project-access';
 import { MicroserviceClient, MicroserviceName } from '@app/common/microservice-client';
 import { UploadTopics } from '@app/common/microservice-client/topics';
-import { ReleaseParams } from '@app/common/dto/upload';
 import { lastValueFrom } from 'rxjs';
 import { randomBytes } from 'crypto';
 import { GitSyncService } from './git-sync.service';
@@ -95,7 +94,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
 
   async getProjects(query: GetProjectsQueryDto, email: string): Promise<PaginatedResultDto<ProjectDto>> {
     this.logger.debug(`Get projects with query: ${JSON.stringify(query)}`)
-    const { page = 1, perPage = 10, pinned, includePinned, projectNames } = query;
+    const { page = 1, perPage = 10, pinned, includePinned, projectNames, archived } = query;
 
     const pinnedQuery: { pinned?: boolean } = { pinned: undefined };
     if (includePinned === false) {
@@ -105,13 +104,17 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       pinnedQuery.pinned = true;
     }
 
+    // Default: return only non-archived projects. Pass archived=true to get archived ones.
+    const archivedCondition = archived === true ? Not(IsNull()) : IsNull();
+
     // When projectNames is provided (e.g., from discovery service), skip user/member filtering
     let whereCondition: any;
     
     if (projectNames && Array.isArray(projectNames) && projectNames.length > 0) {
       // Direct lookup by project names without user context
       whereCondition = {
-        name: In(projectNames)
+        name: In(projectNames),
+        archivedAt: archivedCondition,
       };
     } else {
       // Normal user-context based filtering
@@ -120,6 +123,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
           member: { email: email },
           ...pinnedQuery
         },
+        archivedAt: archivedCondition,
       };
     }
 
@@ -168,7 +172,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   async searchProjects(dto: SearchProjectsQueryDto, email: string): Promise<PaginatedResultDto<BaseProjectDto>> {
     this.logger.debug(`Search projects with query: ${JSON.stringify(dto)}`)
     const { page = 1 , perPage = 10, query, status, includeUnassociated } = dto;
-    const whereCondition: any = {};
+    const whereCondition: any = { archivedAt: IsNull() };
     
     if (includeUnassociated !== true) {
       whereCondition.memberProject = { member: { email: email } };
@@ -421,27 +425,79 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   }
 
   async deleteProject(params: ProjectIdentifierParams): Promise<string> {
-    this.logger.log(`Delete project with id: ${params.projectId}`)
+    this.logger.log(`Archive (soft-delete) project with id: ${params.projectId}`)
+    const project = await this.projectRepo.findOne({
+      where: { id: params.projectId, archivedAt: IsNull() },
+    });
+
+    if (!project) {
+      throw new NotFoundException(`Project with id ${params.projectId} not found or is already archived`);
+    }
+
+    // Archive all releases in the upload service
+    try {
+      await lastValueFrom(
+        this.uploadClient.send(UploadTopics.ARCHIVE_PROJECT_RELEASES, { projectId: params.projectId }).pipe(catchRpcError()),
+        { defaultValue: null }
+      );
+    } catch (error: any) {
+      this.logger.error(`Failed to archive releases for project ${params.projectId}: ${error?.message || error?.toString()}`);
+      throw error;
+    }
+
+    project.archivedAt = new Date();
+    await this.projectRepo.save(project);
+
+    return `Project '${project.name}' archived successfully`;
+  }
+
+  async restoreProject(params: ProjectIdentifierParams): Promise<string> {
+    this.logger.log(`Restoring archived project with id: ${params.projectId}`)
+    const project = await this.projectRepo.findOne({
+      where: { id: params.projectId, archivedAt: Not(IsNull()) },
+    });
+
+    if (!project) {
+      throw new NotFoundException(`Archived project with id ${params.projectId} not found`);
+    }
+
+    // Restore all releases in the upload service (set back to DRAFT)
+    try {
+      await lastValueFrom(
+        this.uploadClient.send(UploadTopics.RESTORE_PROJECT_RELEASES, { projectId: params.projectId }).pipe(catchRpcError()),
+        { defaultValue: null }
+      );
+    } catch (error: any) {
+      this.logger.error(`Failed to restore releases for project ${params.projectId}: ${error?.message || error?.toString()}`);
+      throw error;
+    }
+
+    project.archivedAt = null;
+    await this.projectRepo.save(project);
+
+    return `Project '${project.name}' restored successfully`;
+  }
+
+  async permanentlyDeleteProject(params: ProjectIdentifierParams): Promise<string> {
+    this.logger.log(`Permanently deleting archived project with id: ${params.projectId}`)
     const project = await this.projectRepo.findOne({
       select: { releases: { version: true } },
-      where: { id: params.projectId },
+      where: { id: params.projectId, archivedAt: Not(IsNull()) },
       relations: { releases: true, deviceTypes: true }
     });
 
+    if (!project) {
+      throw new NotFoundException(`Archived project with id ${params.projectId} not found. Only archived projects can be permanently deleted.`);
+    }
+
     if (project?.releases?.length) {
-      this.logger.debug(`Send deleted request to upload for ${project.releases.length} releases`)
-      const releasesParams = project.releases.map(release => new ReleaseParams(params.projectId, release.version))
+      this.logger.debug(`Sending bulk delete request to upload for ${project.releases.length} releases`)
       try {
-        await Promise.all(releasesParams.map(release => 
-          lastValueFrom(this.uploadClient.send(UploadTopics.DELETE_RELEASE, release).pipe(catchRpcError()))
-        ))
-      } catch (error) {
-        if (error instanceof AppError){
-          if (error.errorCode == ErrorCode.RELEASE_HAS_DEPENDENTS){
-            error.errorCode = ErrorCode.PM_DELETE_PROJECT_FAILED
-            error.message = `Delete Project releases failed because some releases have dependents.`
-          }
-        }
+        await lastValueFrom(
+          this.uploadClient.send(UploadTopics.DELETE_PROJECT_RELEASES, { projectId: params.projectId }).pipe(catchRpcError()),
+          { defaultValue: null },
+        );
+      } catch (error: any) {
         this.logger.error(`Failed to delete releases for project ${params.projectId}: ${error?.message || error?.toString()}`);
         throw error;
       }
@@ -458,14 +514,13 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       if (affected === 0) {
         throw new NotFoundException(`Project with id ${params.projectId} not found, delete failed`);
       }
-      return `Project '${project?.name}' deleted successfully`;
-    } catch (error) {
-      if (error.code === '23503') { // foreign key violation, meaning a referenced row does not exist in the referenced table
+      return `Project '${project?.name}' permanently deleted successfully`;
+    } catch (error: any) {
+      if (error.code === '23503') {
         throw new ConflictException('Delete Project releases failed, Try again later')
       }
       throw error
     }
-
   }
 
   async confirmMemberInProject(params: ProjectIdentifierParams, email: string) {
