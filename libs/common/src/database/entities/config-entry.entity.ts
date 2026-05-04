@@ -19,7 +19,7 @@ export class ConfigEntryEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @ManyToOne(() => ConfigGroupEntity, (group) => group.entries, { nullable: false, onDelete: 'CASCADE' })
+  @ManyToOne(() => ConfigGroupEntity, { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'group_id' })
   group: ConfigGroupEntity;
 

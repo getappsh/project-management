@@ -47,15 +47,17 @@ export class AddConfigProjectTables1780000000000 implements MigrationInterface {
     await queryRunner.query(`CREATE INDEX "IDX_config_revision_status"     ON "config_revision" ("status")`);
 
     // -------------------------------------------------------------------------
-    // 4. config_group table
+    // 4. config_group table (stores group config as a YAML string)
     // -------------------------------------------------------------------------
     await queryRunner.query(`
       CREATE TABLE "config_group" (
-        "id"            SERIAL NOT NULL,
-        "revision_id"   integer NOT NULL,
-        "name"          character varying NOT NULL,
-        "is_global"     boolean NOT NULL DEFAULT false,
-        "git_file_path" character varying,
+        "id"             SERIAL NOT NULL,
+        "revision_id"    integer NOT NULL,
+        "name"           character varying NOT NULL,
+        "is_global"      boolean NOT NULL DEFAULT false,
+        "git_file_path"  character varying,
+        "yaml_content"   text,
+        "sensitive_keys" jsonb NOT NULL DEFAULT '[]',
         CONSTRAINT "PK_config_group" PRIMARY KEY ("id"),
         CONSTRAINT "FK_config_group_revision"
           FOREIGN KEY ("revision_id") REFERENCES "config_revision"("id") ON DELETE CASCADE
@@ -65,27 +67,7 @@ export class AddConfigProjectTables1780000000000 implements MigrationInterface {
     await queryRunner.query(`CREATE INDEX "IDX_config_group_revision_id" ON "config_group" ("revision_id")`);
 
     // -------------------------------------------------------------------------
-    // 5. config_entry table
-    // -------------------------------------------------------------------------
-    await queryRunner.query(`
-      CREATE TABLE "config_entry" (
-        "id"           SERIAL NOT NULL,
-        "group_id"     integer NOT NULL,
-        "key"          character varying NOT NULL,
-        "value"        text,
-        "is_sensitive" boolean NOT NULL DEFAULT false,
-        "created_at"   TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-        "updated_at"   TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-        CONSTRAINT "PK_config_entry" PRIMARY KEY ("id"),
-        CONSTRAINT "FK_config_entry_group"
-          FOREIGN KEY ("group_id") REFERENCES "config_group"("id") ON DELETE CASCADE
-      )
-    `);
-
-    await queryRunner.query(`CREATE INDEX "IDX_config_entry_group_id" ON "config_entry" ("group_id")`);
-
-    // -------------------------------------------------------------------------
-    // 6. config_map_association table
+    // 5. config_map_association table
     // -------------------------------------------------------------------------
     await queryRunner.query(`
       CREATE TABLE "config_map_association" (
@@ -107,7 +89,6 @@ export class AddConfigProjectTables1780000000000 implements MigrationInterface {
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP TABLE IF EXISTS "config_map_association"`);
-    await queryRunner.query(`DROP TABLE IF EXISTS "config_entry"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "config_group"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "config_revision"`);
     await queryRunner.query(`DROP TYPE IF EXISTS "public"."config_revision_status_enum"`);

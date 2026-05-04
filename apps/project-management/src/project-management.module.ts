@@ -1,5 +1,5 @@
 import { DatabaseModule, UploadJwtConfigService,  } from '@app/common';
-import { MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity, PlatformEntity, LabelEntity, ConfigRevisionEntity, ConfigGroupEntity, ConfigEntryEntity, ConfigMapAssociationEntity } from '@app/common/database/entities';
+import { MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity, PlatformEntity, LabelEntity, ConfigRevisionEntity, ConfigGroupEntity, ConfigMapAssociationEntity } from '@app/common/database/entities';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -37,7 +37,7 @@ import { S3Module } from '@app/common/AWS/s3.module';
       MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, 
       RegulationEntity, RegulationTypeEntity, PlatformEntity,
       DeviceEntity, ProjectTokenEntity, DocEntity, LabelEntity,
-      ConfigRevisionEntity, ConfigGroupEntity, ConfigEntryEntity, ConfigMapAssociationEntity,
+      ConfigRevisionEntity, ConfigGroupEntity, ConfigMapAssociationEntity,
     ]),
     OidcModule.forRoot(),
     MicroserviceModule.register({

@@ -7,7 +7,6 @@ import {
   AddConfigMapAssociationDto,
   ApplyConfigRevisionDto,
   CreateDraftRevisionDto,
-  DeleteConfigEntryDto,
   DeleteConfigGroupDto,
   DeleteDraftRevisionDto,
   GetConfigRevisionByIdDto,
@@ -15,7 +14,6 @@ import {
   GetDeviceConfigByVersionDto,
   GetDeviceConfigDto,
   RemoveConfigMapAssociationDto,
-  UpsertConfigEntryDto,
   UpsertConfigGroupDto,
 } from '@app/common/dto/project-management';
 
@@ -38,20 +36,6 @@ export class ConfigController {
   @MessagePattern(ProjectManagementTopics.CONFIG_DELETE_GROUP)
   deleteGroup(@RpcPayload() dto: DeleteConfigGroupDto) {
     return this.configService.deleteGroup(dto);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Entries
-  // ---------------------------------------------------------------------------
-
-  @MessagePattern(ProjectManagementTopics.CONFIG_UPSERT_ENTRY)
-  upsertEntry(@RpcPayload() dto: UpsertConfigEntryDto) {
-    return this.configService.upsertEntry(dto);
-  }
-
-  @MessagePattern(ProjectManagementTopics.CONFIG_DELETE_ENTRY)
-  deleteEntry(@RpcPayload() dto: DeleteConfigEntryDto) {
-    return this.configService.deleteEntry(dto);
   }
 
   // ---------------------------------------------------------------------------
