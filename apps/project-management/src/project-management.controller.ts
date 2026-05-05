@@ -324,7 +324,9 @@ export class ProjectManagementController {
 
   @MessagePattern(ProjectManagementTopics.TRIGGER_GIT_SYNC_BY_WEBHOOK)
   triggerGitSyncByWebhook(@RpcPayload() data: { webhookToken: string }) {
-    return this.projectManagementService.triggerGitSyncByWebhook(data.webhookToken);
+    this.projectManagementService.triggerGitSyncByWebhook(data.webhookToken)
+      .catch(err => this.logger.error(`Git sync by webhook failed: ${err?.message}`));
+    return { acknowledged: true };
   }
 
   @MessagePattern(ProjectManagementTopics.CHECK_RELEASE_EXISTS)
