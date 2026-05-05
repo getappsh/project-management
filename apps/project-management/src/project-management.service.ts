@@ -325,7 +325,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     // Create git source if provided
     if (projectDto.gitCloneUrl) {
       const gitSource = new ProjectGitSourceEntity();
-      gitSource.project = project;
+      gitSource.project = { id: project.id } as ProjectEntity;
       const webhookToken = this.generateWebhookToken();
       gitSource.cloneUrl = projectDto.gitCloneUrl;
       gitSource.cloneInterval = projectDto.gitCloneInterval ?? 60;
@@ -440,10 +440,29 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
         gitSource.branch = dto.gitBranch !== undefined ? dto.gitBranch : gitSource.branch;
         gitSource.getappFilePath = dto.gitGetappFilePath !== undefined ? dto.gitGetappFilePath : gitSource.getappFilePath;
 
-        if (!gitSource.webhookUrl) {
-          const webhookToken = this.generateWebhookToken();
-          gitSource.webhookUrl = this.generateWebhookUrl(webhookToken, dto.apiBaseUrl);
+        // SSH key and HTTPS credentials are mutually exclusive.
+        // Only update credentials when a real value is provided.
+        // Only clear the opposing method when explicitly switching to the other.
+        const incomingSshKey = dto.gitSshKey || null;
+        const incomingHttpsUser = dto.gitHttpsUsername || null;
+        const incomingHttpsPass = dto.gitHttpsPassword || null;
+
+        if (incomingSshKey) {
+          // Switching to / updating SSH — clear HTTPS credentials
+          gitSource.sshKey = incomingSshKey;
+          gitSource.httpsUsername = null;
+          gitSource.httpsPassword = null;
+        } else if (incomingHttpsUser || incomingHttpsPass) {
+          // Switching to / updating HTTPS — clear SSH key
+          gitSource.sshKey = null;
+          gitSource.httpsUsername = incomingHttpsUser ?? gitSource.httpsUsername;
+          gitSource.httpsPassword = incomingHttpsPass ?? gitSource.httpsPassword;
         }
+        // If neither is provided, retain existing credentials as-is
+
+        // Always regenerate webhook URL to fix any malformed URLs
+        const webhookToken = this.generateWebhookToken();
+        gitSource.webhookUrl = this.generateWebhookUrl(webhookToken, dto.apiBaseUrl);
 
         if (!project.gitSource) {
           gitSource.project = project;
@@ -920,7 +939,12 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   async getProjectTokens(projectId: number): Promise<ProjectTokenDto[]> {
     this.logger.log(`Get all tokens for project with id ${projectId}`);
     const tokens = await this.tokenRepo.find({ where: { project: { id: projectId } } })
-    return tokens.map(t => ProjectTokenDto.fromProjectTokenEntity(t))
+    return tokens.map(t => {
+      const dto = ProjectTokenDto.fromProjectTokenEntity(t);
+      const payload = this.jwtService.decode(t.token) as any;
+      dto.description = payload?.data?.description;
+      return dto;
+    })
   }
 
   async getProjectTokenById(params: TokenParams): Promise<ProjectTokenDto> {
@@ -929,7 +953,10 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     if (!token) {
       throw new NotFoundException(`Token with id ${params.tokenId} for project with id ${params.projectId} not found`)
     }
-    return ProjectTokenDto.fromProjectTokenEntity(token)
+    const dto = ProjectTokenDto.fromProjectTokenEntity(token);
+    const payload = this.jwtService.decode(token.token) as any;
+    dto.description = payload?.data?.description;
+    return dto;
   }
 
   async createToken(dto: CreateProjectTokenDto): Promise<ProjectTokenDto> {
@@ -942,7 +969,8 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       project.name,
       dto.name,
       dto.neverExpires ?? false,
-      expirationDate
+      expirationDate,
+      dto.description
     );
 
     this.logger.log(`Generated Token: ${token.slice(token.length - 10)}`);
@@ -958,7 +986,9 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     projectToken.project = project;
     try {
       const savedProjectToken = await this.tokenRepo.save(projectToken);
-      return ProjectTokenDto.fromProjectTokenEntity(savedProjectToken);
+      const result = ProjectTokenDto.fromProjectTokenEntity(savedProjectToken);
+      result.description = dto.description;
+      return result;
     } catch (error) {
       throw new InternalServerErrorException(error);
     }
@@ -991,9 +1021,9 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   }
 
 
-  private generateToken(projectId: number, projectName: string, name: string, neverExpires: boolean, expirationDate?: Date): string {
+  private generateToken(projectId: number, projectName: string, name: string, neverExpires: boolean, expirationDate?: Date, description?: string): string {
     this.logger.log(`Generate token for project with id ${projectId}`);
-    const payload = { projectId, projectName, name, neverExpires }
+    const payload = { projectId, projectName, name, neverExpires, description }
     const expiresIn = neverExpires
       ? '100y'
       : expirationDate
@@ -1176,7 +1206,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
    */
   private generateWebhookUrl(token: string, apiBaseUrl?: string): string {
     const baseUrl = process.env.API_BASE_URL || apiBaseUrl || 'http://localhost:3000';
-    return `${baseUrl}/api/projects/git-webhook/${token}`;
+    return `${baseUrl}/api/v1/project/git-webhook/${token}`;
   }
 
   /**
@@ -1212,7 +1242,11 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   }
 
   async onModuleInit() {
-    this.uploadClient.subscribeToResponseOf([UploadTopics.DELETE_RELEASE])
+    this.uploadClient.subscribeToResponseOf([
+      UploadTopics.DELETE_RELEASE,
+      UploadTopics.IMPORT_RELEASE,
+      UploadTopics.GET_RELEASE_BY_VERSION,
+    ])
     await this.uploadClient.connect()
   }
 
