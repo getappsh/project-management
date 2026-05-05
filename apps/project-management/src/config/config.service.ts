@@ -900,11 +900,13 @@ export class ConfigService implements OnModuleInit {
     return payload;
   }
 
-  /**
-   * Syncs config groups for a CONFIG project from gitops YAML content.
-   * Entries from `yamlContent` are serialised to a YAML string and stored on
-   * the group in the draft revision.
-   */
+  // ---------------------------------------------------------------------------
+  // NOT SUPPORTED: Config / ConfigMap project git sync
+  // Decision: git sync for CONFIG and CONFIG_MAP project types is not supported.
+  // The code below is retained for reference but is disabled.
+  // ---------------------------------------------------------------------------
+
+  /*
   async syncGroupFromGitYaml(
     projectId: number,
     groupName: string,
@@ -947,6 +949,7 @@ export class ConfigService implements OnModuleInit {
     group.yamlContent = Object.keys(parsed).length > 0 ? yaml.dump(parsed) : null;
     await this.groupRepo.save(group);
   }
+  */
 
   // ---------------------------------------------------------------------------
   // Private helpers
