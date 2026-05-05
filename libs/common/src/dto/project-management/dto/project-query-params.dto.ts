@@ -51,6 +51,17 @@ export class GetProjectsQueryDto {
   @IsString({ each: true })
   @Type(() => String)
   projectNames?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Filter by specific project types. When not provided, config and config_map types are excluded by default.',
+    example: ['application', 'lib'],
+    enum: ProjectType,
+    isArray: true,
+  })
+  @IsOptional()
+  @IsEnum(ProjectType, { each: true })
+  @Transform(({ value }) => (Array.isArray(value) ? value : [value]))
+  projectTypes?: ProjectType[];
  
 }
 
@@ -105,4 +116,15 @@ export class SearchProjectsQueryDto {
   @IsPositive()
   @Type(() => Number)
   perPage?: number = 10;
+
+  @ApiPropertyOptional({
+    description: 'Filter by specific project types. When not provided, config and config_map types are excluded by default.',
+    example: ['application', 'lib'],
+    enum: ProjectType,
+    isArray: true,
+  })
+  @IsOptional()
+  @IsEnum(ProjectType, { each: true })
+  @Transform(({ value }) => (Array.isArray(value) ? value : [value]))
+  projectTypes?: ProjectType[];
 }

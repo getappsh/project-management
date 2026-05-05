@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan } from 'typeorm';
-import { ProjectEntity } from '@app/common/database/entities';
+import { ProjectEntity, ProjectType } from '@app/common/database/entities';
 import { 
   GitSyncResultDto, 
   GitSyncStatus, 
@@ -21,6 +21,9 @@ import { promisify } from 'util';
 import { exec } from 'child_process';
 import { ClsService } from 'nestjs-cls';
 import { ProjectManagementService } from './project-management.service';
+import { VaultService } from '@app/common/vault';
+import { ConfigService as AppConfigService } from './config/config.service';
+import * as yaml from 'js-yaml';
 
 const execAsync = promisify(exec);
 
@@ -39,6 +42,9 @@ export class GitSyncService {
     private readonly cls: ClsService,
     @Inject(forwardRef(() => ProjectManagementService))
     private readonly projectManagementService: ProjectManagementService,
+    private readonly vaultService: VaultService,
+    @Inject(forwardRef(() => AppConfigService))
+    private readonly appConfigService: AppConfigService,
   ) {}
 
   /**
@@ -100,6 +106,19 @@ export class GitSyncService {
         }
 
         result.version = getappConfig.version;
+
+        // NOT SUPPORTED: git sync for CONFIG / CONFIG_MAP project types is disabled.
+        // if (
+        //   project.projectType === ProjectType.CONFIG ||
+        //   project.projectType === ProjectType.CONFIG_MAP
+        // ) {
+        //   await this.syncConfigGroupsFromGetapp(project.id, repoDir, getappConfig);
+        //   result.status = GitSyncStatus.SUCCESS;
+        //   result.message = `Config groups synced from git (version ${getappConfig.version})`;
+        //   result.releaseCreated = false;
+        //   this.emitSyncCompletedEvent(result);
+        //   return result;
+        // }
 
         // Check if release already exists
         const releaseExists = await this.checkReleaseExists({
@@ -195,6 +214,48 @@ export class GitSyncService {
     );
   }
 
+  // NOT SUPPORTED: git sync for CONFIG / CONFIG_MAP project types is disabled.
+  // The method below is retained for reference but is disabled.
+  //
+  // private async syncConfigGroupsFromGetapp(
+  //   projectId: number,
+  //   repoDir: string,
+  //   getappConfig: ImportReleaseDto,
+  // ): Promise<void> {
+  //   const groups = getappConfig.configGroups ?? [];
+  //   if (groups.length === 0) {
+  //     this.logger.debug(`No configGroups defined in .getapp file for project ${projectId}`);
+  //     return;
+  //   }
+  //
+  //   for (const groupDef of groups) {
+  //     const { name, gitFilePath, isGlobal } = groupDef;
+  //     let entries: Record<string, string> = {};
+  //
+  //     if (gitFilePath) {
+  //       const fullPath = path.join(repoDir, gitFilePath);
+  //       try {
+  //         const raw = await fs.promises.readFile(fullPath, 'utf-8');
+  //         const parsed = yaml.load(raw);
+  //         if (parsed && typeof parsed === 'object') {
+  //           entries = Object.fromEntries(
+  //             Object.entries(parsed as Record<string, unknown>).map(([k, v]) => [k, String(v)]),
+  //           );
+  //         }
+  //       } catch (err) {
+  //         this.logger.warn(`Could not read YAML file '${gitFilePath}' for group '${name}': ${err.message}`);
+  //         continue;
+  //       }
+  //     }
+  //
+  //     await this.appConfigService.syncGroupFromGitYaml(projectId, name, isGlobal ?? false, gitFilePath ?? '', entries);
+  //   }
+  //
+  //   // Apply the draft revision so the new config goes live
+  //   await this.appConfigService.applyRevision({ projectIdentifier: projectId, appliedBy: 'git-sync' });
+  //   this.logger.log(`Config groups synced and revision applied for project ${projectId}`);
+  // }
+
   /**
    * Clone a git repository
    * @param project - Project entity with git configuration
@@ -208,10 +269,14 @@ export class GitSyncService {
     // Create repo directory
     await fs.promises.mkdir(repoDir, { recursive: true });
 
+    // Resolve credentials from Vault if they are stored as references
+    const resolvedSshKey = await this.vaultService.resolveSecret(gitSource.sshKey);
+    const resolvedHttpsPassword = await this.vaultService.resolveSecret(gitSource.httpsPassword);
+
     // If SSH key is provided, set up SSH authentication in isolated directory
     let sshKeyPath: string | undefined;
-    if (gitSource.sshKey) {
-      sshKeyPath = await this.setupSshKey(gitSource.sshKey, sshDir);
+    if (resolvedSshKey) {
+      sshKeyPath = await this.setupSshKey(resolvedSshKey, sshDir);
     }
 
     // Build the effective clone URL
@@ -230,7 +295,7 @@ export class GitSyncService {
       try {
         const parsed = new URL(gitCloneUrl!);
         parsed.username = encodeURIComponent(gitSource.httpsUsername);
-        parsed.password = encodeURIComponent(gitSource.httpsPassword);
+        parsed.password = encodeURIComponent(resolvedHttpsPassword);
         effectiveCloneUrl = parsed.toString();
       } catch {
         throw new Error(`Invalid git clone URL: ${gitCloneUrl}`);

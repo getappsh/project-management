@@ -1,5 +1,5 @@
 import { DatabaseModule, UploadJwtConfigService,  } from '@app/common';
-import { MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity, PlatformEntity, LabelEntity } from '@app/common/database/entities';
+import { MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity, PlatformEntity, LabelEntity, ConfigRevisionEntity, ConfigGroupEntity, ConfigMapAssociationEntity } from '@app/common/database/entities';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -16,6 +16,13 @@ import { GitSyncScheduler } from './git-sync-scheduler.service';
 import { PROJECT_ACCESS_SERVICE } from '@app/common/utils/project-access';
 import { MicroserviceModule, MicroserviceName, MicroserviceType } from '@app/common/microservice-client';
 import { SafeCronModule } from '@app/common/safe-cron';
+import { VaultModule } from '@app/common/vault';
+import { VaultCredentialsMigrationService } from './vault-credentials-migration.service';
+import { ConfigService as AppConfigService } from './config/config.service';
+import { ConfigController } from './config/config.controller';
+import { ConfigCacheService } from './config/config-cache.service';
+import { ConfigProjectProvisioningService } from './config/config-project-provisioning.service';
+import { S3Module } from '@app/common/AWS/s3.module';
 
 @Module({
   imports: [
@@ -29,7 +36,8 @@ import { SafeCronModule } from '@app/common/safe-cron';
     TypeOrmModule.forFeature([
       MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, 
       RegulationEntity, RegulationTypeEntity, PlatformEntity,
-      DeviceEntity, ProjectTokenEntity, DocEntity, LabelEntity
+      DeviceEntity, ProjectTokenEntity, DocEntity, LabelEntity,
+      ConfigRevisionEntity, ConfigGroupEntity, ConfigMapAssociationEntity,
     ]),
     OidcModule.forRoot(),
     MicroserviceModule.register({
@@ -37,15 +45,26 @@ import { SafeCronModule } from '@app/common/safe-cron';
       type: MicroserviceType.UPLOAD,
       id: "project-management"
     }),
+    MicroserviceModule.register({
+      name: MicroserviceName.DEVICE_SERVICE,
+      type: MicroserviceType.DEVICE,
+      id: "project-management"
+    }),
     SafeCronModule,
+    VaultModule,
+    S3Module,
   ],
-  controllers: [ProjectManagementController],
+  controllers: [ProjectManagementController, ConfigController],
   providers: [
     ProjectManagementService, 
     RegulationService,
     GitSyncService,
     GitSyncScheduler,
     SeederService,
+    VaultCredentialsMigrationService,
+    AppConfigService,
+    ConfigCacheService,
+    ConfigProjectProvisioningService,
     {
       provide: PROJECT_ACCESS_SERVICE,
       useExisting: ProjectManagementService

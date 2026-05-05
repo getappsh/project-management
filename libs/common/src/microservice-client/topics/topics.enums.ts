@@ -173,6 +173,24 @@ export const ProjectManagementTopics = {
     GET_SYSTEM_WIDE_DEPLOYMENT_REPORT: `getapp-project-management.get-system-wide-deployment-report${region}`,
     GET_PROJECT_DEPLOYMENT_REPORT: `getapp-project-management.get-project-deployment-report${region}`,
 
+    // Config projects
+    CONFIG_UPSERT_GROUP: `getapp-project-management.config.upsert-group${region}`,
+    CONFIG_DELETE_GROUP: `getapp-project-management.config.delete-group${region}`,
+    CONFIG_UPSERT_ENTRY: `getapp-project-management.config.upsert-entry${region}`,
+    CONFIG_DELETE_ENTRY: `getapp-project-management.config.delete-entry${region}`,
+    CONFIG_APPLY_REVISION: `getapp-project-management.config.apply-revision${region}`,
+    CONFIG_GET_REVISIONS: `getapp-project-management.config.get-revisions${region}`,
+    CONFIG_GET_REVISION_BY_ID: `getapp-project-management.config.get-revision-by-id${region}`,
+    CONFIG_ADD_MAP_ASSOCIATION: `getapp-project-management.config.add-map-association${region}`,
+    CONFIG_REMOVE_MAP_ASSOCIATION: `getapp-project-management.config.remove-map-association${region}`,
+    CONFIG_GET_MAP_ASSOCIATIONS: `getapp-project-management.config.get-map-associations${region}`,
+    CONFIG_GET_CONFIG_MAPS_FOR_PROJECT: `getapp-project-management.config.get-config-maps-for-project${region}`,
+    CONFIG_GET_DEVICE_CONFIG: `getapp-project-management.config.get-device-config${region}`,
+    CONFIG_GET_DEVICE_CONFIG_BY_VERSION: `getapp-project-management.config.get-device-config-by-version${region}`,
+    CONFIG_GET_ACTIVE_SEMVER_FOR_DEVICE: `getapp-project-management.config.get-active-semver-for-device${region}`,
+    CONFIG_ENSURE_DEVICE_PROJECT: `getapp-project-management.config.ensure-device-project${region}`,
+    CONFIG_CREATE_DRAFT_REVISION: `getapp-project-management.config.create-draft-revision${region}`,
+    CONFIG_DELETE_DRAFT_REVISION: `getapp-project-management.config.delete-draft-revision${region}`,
     CHECK_HEALTH: `getapp-project-management.check-health${region}`
 } as const
 
@@ -248,6 +266,10 @@ export const DeviceTopics = {
     GET_DEVICE_RESTRICTIONS: `getapp-device.get-device-restrictions${region}`,
     // OS
     GET_ALL_OS: `getapp-device.get-all-os${region}`,
+    // Config helper queries (used by project-management service)
+    GET_DEVICE_TYPE_IDS_FOR_DEVICE: `getapp-device.get-device-type-ids${region}`,
+    GET_DEVICE_IDS_BY_TYPE_IDS: `getapp-device.get-device-ids-by-type-ids${region}`,
+    GET_ALL_DEVICE_IDS: `getapp-device.get-all-device-ids${region}`,
 } as const
 
 export const DeviceTopicsEmit = {

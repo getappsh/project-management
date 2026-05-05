@@ -202,6 +202,56 @@ export class S3Service implements OnApplicationBootstrap {
     return data
   }
 
+  /**
+   * Store an arbitrary string payload at `objectKey` with optional S3 metadata.
+   * Suitable for small blobs like cached JSON payloads.
+   */
+  async putObjectWithContent(
+    objectKey: string,
+    body: string,
+    options?: { contentType?: string; metadata?: Record<string, string> },
+  ): Promise<void> {
+    await this.s3.putObject({
+      Bucket: this.bucketName,
+      Key: objectKey,
+      Body: body,
+      ContentType: options?.contentType ?? 'application/octet-stream',
+      Metadata: options?.metadata,
+    });
+  }
+
+  /**
+   * Fetch a text object from S3.
+   * Returns `null` when the key does not exist (404 / NoSuchKey).
+   * Also returns the raw S3 Metadata map so callers can inspect custom headers.
+   */
+  async getObjectAsString(
+    objectKey: string,
+  ): Promise<{ body: string; metadata: Record<string, string> } | null> {
+    try {
+      const result = await this.s3.send(new GetObjectCommand({ Bucket: this.bucketName, Key: objectKey }));
+      const body = await this.streamToString(result.Body as Readable);
+      return {
+        body,
+        metadata: (result.Metadata as Record<string, string>) ?? {},
+      };
+    } catch (error) {
+      if (error['$metadata']?.httpStatusCode === 404 || error.name === 'NoSuchKey') {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  private streamToString(readable: Readable): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      readable.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+      readable.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+      readable.on('error', reject);
+    });
+  }
+
   onApplicationBootstrap() {
     this.createBucketIfNotExists()
   }
