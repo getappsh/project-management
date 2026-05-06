@@ -13,6 +13,9 @@ export class ConfigGroupDto {
   @ApiProperty()
   name: string;
 
+  @ApiProperty({ required: false, description: 'Optional human-readable display name. Falls back to name when not set.' })
+  displayName: string | null;
+
   @ApiProperty()
   isGlobal: boolean;
 
@@ -41,6 +44,11 @@ export class UpsertConfigGroupDto {
   @IsString()
   @IsNotEmpty()
   name: string;
+
+  @ApiProperty({ required: false, description: 'Optional human-readable display name. Falls back to name when not set.' })
+  @IsString()
+  @IsOptional()
+  displayName?: string;
 
   @ApiProperty({ required: false, default: false })
   @IsBoolean()

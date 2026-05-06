@@ -183,6 +183,7 @@ export class ConfigService implements OnModuleInit {
     }
 
     group.isGlobal = dto.isGlobal ?? group.isGlobal ?? false;
+    group.displayName = dto.displayName !== undefined ? (dto.displayName ?? null) : (group.displayName ?? null);
     group.gitFilePath = dto.gitFilePath ?? group.gitFilePath ?? null;
 
     // Update sensitive key list when explicitly provided
@@ -1099,6 +1100,7 @@ export class ConfigService implements OnModuleInit {
       this.groupRepo.create({
         revisionId: targetRevisionId,
         name: source.name,
+        displayName: source.displayName ?? null,
         isGlobal: source.isGlobal,
         gitFilePath: source.gitFilePath,
         sensitiveKeys: source.sensitiveKeys ?? [],
@@ -1231,6 +1233,7 @@ export class ConfigService implements OnModuleInit {
     return {
       id: group.id,
       name: group.name,
+      displayName: group.displayName ?? null,
       isGlobal: group.isGlobal,
       gitFilePath: group.gitFilePath,
       sensitiveKeys,

@@ -34,6 +34,13 @@ export class ConfigGroupEntity {
   name: string;
 
   /**
+   * Optional human-readable display name for the group shown in UI contexts.
+   * Falls back to `name` when not set.
+   */
+  @Column({ name: 'display_name', type: 'varchar', nullable: true })
+  displayName: string | null;
+
+  /**
    * When true, this group's parsed YAML is automatically merged into every other
    * group of the same revision (and the device's merged config view).
    */
