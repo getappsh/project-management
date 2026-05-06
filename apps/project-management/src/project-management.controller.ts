@@ -81,6 +81,18 @@ export class ProjectManagementController {
     return this.projectManagementService.deleteProject(params);
   }
 
+  @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER)
+  @MessagePattern(ProjectManagementTopics.RESTORE_PROJECT)
+  restoreProject(@RpcPayload() params: ProjectIdentifierParams) {
+    return this.projectManagementService.restoreProject(params);
+  }
+
+  @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER)
+  @MessagePattern(ProjectManagementTopics.PERMANENTLY_DELETE_PROJECT)
+  permanentlyDeleteProject(@RpcPayload() params: ProjectIdentifierParams) {
+    return this.projectManagementService.permanentlyDeleteProject(params);
+  }
+
   @ValidateProjectUserAccess(RoleInProject.PROJECT_OWNER, RoleInProject.PROJECT_ADMIN)
   @MessagePattern(ProjectManagementTopics.ADD_PROJECT_NEW_MEMBER)
   addMemberToProject(@RpcPayload() projectMember: AddMemberToProjectDto) {
