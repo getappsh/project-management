@@ -591,7 +591,9 @@ export class ConfigService implements OnModuleInit {
     const existingCount = await this.groupRepo.count({ where: { revisionId: draft.id } });
     if (existingCount > 0) return;
 
-    const defaultGroups = ['getapp_metadata', 'getapp_enrollment', 'getapp_config'];
+    // const defaultGroups = ['getapp_metadata', 'getapp_enrollment', 'getapp_config'];
+      const defaultGroups = ['getapp_enrollment', 'getapp_config'];
+
     for (const name of defaultGroups) {
       await this.groupRepo.save(
         this.groupRepo.create({ revisionId: draft.id, name, isGlobal: false, gitFilePath: null, yamlContent: null, sensitiveKeys: [] }),
