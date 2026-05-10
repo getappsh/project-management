@@ -1209,28 +1209,32 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   }
 
   async getOrCreateGitSyncProjectToken(projectId: number): Promise<string> {
-    let tokenEntity = await this.tokenRepo.findOne({
+    const tokenEntity = await this.tokenRepo.findOne({
       where: {
         project: { id: projectId },
-        isActive: true,
         neverExpires: true,
         name: 'git-sync-system',
       },
       order: { createdDate: 'DESC' },
     });
 
-    if (!tokenEntity) {
-      this.logger.log(`Creating git-sync token for project ${projectId}`);
-      const tokenDto = await this.createToken({
-        projectId,
-        projectIdentifier: projectId,
-        name: 'git-sync-system',
-        neverExpires: true,
-      });
-      return tokenDto.token;
+    if (tokenEntity) {
+      if (!tokenEntity.isActive) {
+        throw new BadRequestException(
+          `Git sync token for project ${projectId} is disabled. Re-enable it to resume git sync.`,
+        );
+      }
+      return tokenEntity.token;
     }
 
-    return tokenEntity.token;
+    this.logger.log(`Creating git-sync token for project ${projectId}`);
+    const tokenDto = await this.createToken({
+      projectId,
+      projectIdentifier: projectId,
+      name: 'git-sync-system',
+      neverExpires: true,
+    });
+    return tokenDto.token;
   }
 
 }
