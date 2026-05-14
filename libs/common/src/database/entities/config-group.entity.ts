@@ -70,4 +70,11 @@ export class ConfigGroupEntity {
    */
   @Column({ name: 'sensitive_keys', type: 'jsonb', default: [] })
   sensitiveKeys: string[];
+
+  /**
+   * Explicit display order within a revision. Lower values appear first.
+   * New groups are assigned the next available position (appended to end).
+   */
+  @Column({ name: 'position', type: 'int', default: 0 })
+  position: number;
 }

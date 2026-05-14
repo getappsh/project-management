@@ -162,6 +162,16 @@ export class ConfigService implements OnModuleInit {
     return this.revisionRepo.save(draft);
   }
 
+  /** Returns the next available position for a group in the given revision. */
+  private async getNextGroupPosition(revisionId: number): Promise<number> {
+    const maxResult = await this.groupRepo
+      .createQueryBuilder('g')
+      .select('MAX(g.position)', 'max')
+      .where('g.revisionId = :revisionId', { revisionId })
+      .getRawOne<{ max: number | null }>();
+    return (maxResult?.max ?? -1) + 1;
+  }
+
   // ---------------------------------------------------------------------------
   // Group CRUD (operates on the current DRAFT revision)
   // ---------------------------------------------------------------------------
@@ -179,7 +189,8 @@ export class ConfigService implements OnModuleInit {
     });
 
     if (!group) {
-      group = this.groupRepo.create({ revisionId: draft.id, name: dto.name });
+      const nextPosition = await this.getNextGroupPosition(draft.id);
+      group = this.groupRepo.create({ revisionId: draft.id, name: dto.name, position: nextPosition });
     }
 
     group.isGlobal = dto.isGlobal ?? group.isGlobal ?? false;
@@ -402,7 +413,7 @@ export class ConfigService implements OnModuleInit {
 
     if (source?.groups?.length) {
       for (const g of source.groups) {
-        await this.cloneGroupToRevision(g, draft.id);
+        await this.cloneGroupToRevision(g, draft.id, g.position);
       }
       draft.groups = await this.groupRepo.find({ where: { revisionId: draft.id } });
     }
@@ -595,9 +606,9 @@ export class ConfigService implements OnModuleInit {
     // const defaultGroups = ['getapp_metadata', 'getapp_enrollment', 'getapp_config'];
       const defaultGroups = ['getapp_enrollment', 'getapp_config'];
 
-    for (const name of defaultGroups) {
+    for (let i = 0; i < defaultGroups.length; i++) {
       await this.groupRepo.save(
-        this.groupRepo.create({ revisionId: draft.id, name, isGlobal: false, gitFilePath: null, yamlContent: null, sensitiveKeys: [] }),
+        this.groupRepo.create({ revisionId: draft.id, name: defaultGroups[i], isGlobal: false, gitFilePath: null, yamlContent: null, sensitiveKeys: [], position: i }),
       );
     }
   }
@@ -684,7 +695,7 @@ export class ConfigService implements OnModuleInit {
       );
       for (const group of previousActive.groups) {
         if (!draftGroupNames.has(group.name)) {
-          await this.cloneGroupToRevision(group, draft.id);
+          await this.cloneGroupToRevision(group, draft.id, group.position);
         }
       }
     }
@@ -777,6 +788,7 @@ export class ConfigService implements OnModuleInit {
 
       let draftGroup = await this.groupRepo.findOne({ where: { revisionId: draftId, name: groupName } });
       if (!draftGroup) {
+        const nextPosition = await this.getNextGroupPosition(draftId);
         draftGroup = await this.groupRepo.save(
           this.groupRepo.create({
             revisionId: draftId,
@@ -785,6 +797,7 @@ export class ConfigService implements OnModuleInit {
             gitFilePath: meta.gitFilePath,
             sensitiveKeys,
             yamlContent: null,
+            position: nextPosition,
           }),
         );
       } else {
@@ -1095,7 +1108,8 @@ export class ConfigService implements OnModuleInit {
    * key under the new group's Vault secret path so each group fully owns its
    * secrets and deletion of the source group doesn't break the copy.
    */
-  private async cloneGroupToRevision(source: ConfigGroupEntity, targetRevisionId: number): Promise<ConfigGroupEntity> {
+  private async cloneGroupToRevision(source: ConfigGroupEntity, targetRevisionId: number, position?: number): Promise<ConfigGroupEntity> {
+    const assignedPosition = position ?? await this.getNextGroupPosition(targetRevisionId);
     const newGroup = await this.groupRepo.save(
       this.groupRepo.create({
         revisionId: targetRevisionId,
@@ -1105,6 +1119,7 @@ export class ConfigService implements OnModuleInit {
         gitFilePath: source.gitFilePath,
         sensitiveKeys: source.sensitiveKeys ?? [],
         yamlContent: null, // filled in below
+        position: assignedPosition,
       }),
     );
 
@@ -1251,7 +1266,9 @@ export class ConfigService implements OnModuleInit {
       appliedAt: revision.appliedAt,
       semVer: revision.semVer ?? null,
       createdAt: revision.createdAt,
-      ...(includeGroups && revision.groups ? { groups: revision.groups.map((g) => this.mapGroupToDto(g)) } : {}),
+      ...(includeGroups && revision.groups
+        ? { groups: [...revision.groups].sort((a, b) => a.position - b.position).map((g) => this.mapGroupToDto(g)) }
+        : {}),
     };
   }
 }
