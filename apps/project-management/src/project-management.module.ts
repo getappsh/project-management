@@ -1,5 +1,5 @@
 import { DatabaseModule, UploadJwtConfigService,  } from '@app/common';
-import { MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity, PlatformEntity, LabelEntity, ConfigRevisionEntity, ConfigGroupEntity, ConfigMapAssociationEntity } from '@app/common/database/entities';
+import { MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity, PlatformEntity, LabelEntity, ConfigRevisionEntity } from '@app/common/database/entities';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -18,11 +18,6 @@ import { MicroserviceModule, MicroserviceName, MicroserviceType } from '@app/com
 import { SafeCronModule } from '@app/common/safe-cron';
 import { VaultModule } from '@app/common/vault';
 import { VaultCredentialsMigrationService } from './vault-credentials-migration.service';
-import { ConfigService as AppConfigService } from './config/config.service';
-import { ConfigController } from './config/config.controller';
-import { ConfigCacheService } from './config/config-cache.service';
-import { ConfigProjectProvisioningService } from './config/config-project-provisioning.service';
-import { S3Module } from '@app/common/AWS/s3.module';
 
 @Module({
   imports: [
@@ -37,7 +32,7 @@ import { S3Module } from '@app/common/AWS/s3.module';
       MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, 
       RegulationEntity, RegulationTypeEntity, PlatformEntity,
       DeviceEntity, ProjectTokenEntity, DocEntity, LabelEntity,
-      ConfigRevisionEntity, ConfigGroupEntity, ConfigMapAssociationEntity,
+      ConfigRevisionEntity,
     ]),
     OidcModule.forRoot(),
     MicroserviceModule.register({
@@ -52,9 +47,8 @@ import { S3Module } from '@app/common/AWS/s3.module';
     }),
     SafeCronModule,
     VaultModule,
-    S3Module,
   ],
-  controllers: [ProjectManagementController, ConfigController],
+  controllers: [ProjectManagementController],
   providers: [
     ProjectManagementService, 
     RegulationService,
@@ -62,9 +56,6 @@ import { S3Module } from '@app/common/AWS/s3.module';
     GitSyncScheduler,
     SeederService,
     VaultCredentialsMigrationService,
-    AppConfigService,
-    ConfigCacheService,
-    ConfigProjectProvisioningService,
     {
       provide: PROJECT_ACCESS_SERVICE,
       useExisting: ProjectManagementService

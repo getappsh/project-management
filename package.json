@@ -31,9 +31,6 @@
     "build:all": "concurrently  --names \"API,UPLOAD,DISCOVERY,OFFERING,DELIVERY,PROJECT-MANAGEMENT,DEPLOY,GET-MAP\" \"npm run build\" \"npm run build upload\"  \"npm run build discovery\"  \"npm run build offering\"  \"npm run build delivery\"  \"npm run build project-management\"  \"npm run build deploy\"  \"npm run build get-map\""
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.296.0",
-    "@aws-sdk/lib-storage": "^3.412.0",
-    "@aws-sdk/s3-request-presigner": "^3.296.0",
     "@nestjs-modules/mailer": "^2.0.2",
     "@nestjs/axios": "^2.0.0",
     "@nestjs/common": "^9.3.9",

@@ -22,7 +22,6 @@ import { exec } from 'child_process';
 import { ClsService } from 'nestjs-cls';
 import { ProjectManagementService } from './project-management.service';
 import { VaultService } from '@app/common/vault';
-import { ConfigService as AppConfigService } from './config/config.service';
 import * as yaml from 'js-yaml';
 
 const execAsync = promisify(exec);
@@ -43,8 +42,6 @@ export class GitSyncService {
     @Inject(forwardRef(() => ProjectManagementService))
     private readonly projectManagementService: ProjectManagementService,
     private readonly vaultService: VaultService,
-    @Inject(forwardRef(() => AppConfigService))
-    private readonly appConfigService: AppConfigService,
   ) {}
 
   /**
@@ -308,7 +305,7 @@ export class GitSyncService {
       try {
         const parsed = new URL(gitCloneUrl!);
         parsed.username = encodeURIComponent(gitSource.httpsUsername);
-        parsed.password = encodeURIComponent(resolvedHttpsPassword);
+        parsed.password = encodeURIComponent(resolvedHttpsPassword!);
         effectiveCloneUrl = parsed.toString();
       } catch {
         throw new Error(`Invalid git clone URL: ${gitCloneUrl}`);
