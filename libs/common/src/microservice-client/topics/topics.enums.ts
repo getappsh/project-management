@@ -50,6 +50,9 @@ export const UploadTopics = {
     // Settings
     GET_SBOM_ENABLED: `getapp-upload.get-sbom-enabled${region}`,
 
+    // Config
+    CONFIG_ENSURE_DEVICE_PROJECT: `getapp-upload.config.ensure-device-project${region}`,
+
 } as const
 
 export const UploadTopicsEmit = {
@@ -189,6 +192,7 @@ export const ProjectManagementTopics = {
     CONFIG_GET_DEVICE_CONFIG_BY_VERSION: `getapp-project-management.config.get-device-config-by-version${region}`,
     CONFIG_GET_ACTIVE_SEMVER_FOR_DEVICE: `getapp-project-management.config.get-active-semver-for-device${region}`,
     CONFIG_ENSURE_DEVICE_PROJECT: `getapp-project-management.config.ensure-device-project${region}`,
+    CONFIG_PROVISION_ALL: `getapp-project-management.config.provision-all${region}`,
     CONFIG_CREATE_DRAFT_REVISION: `getapp-project-management.config.create-draft-revision${region}`,
     CONFIG_DELETE_DRAFT_REVISION: `getapp-project-management.config.delete-draft-revision${region}`,
     CHECK_HEALTH: `getapp-project-management.check-health${region}`

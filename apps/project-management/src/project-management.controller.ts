@@ -37,6 +37,7 @@ import { GitSyncService } from './git-sync.service';
 import { UserSearchDto } from '@app/common/oidc/oidc.interface';
 import { ValidateProjectAnyAccess, ValidateProjectUserAccess } from '@app/common/utils/project-access';
 import { ProjectReleasesChangedEvent } from '@app/common/dto/project-management';
+import { ConfigProjectProvisioningService } from './config-project-provisioning.service';
 
 @Controller()
 @UseInterceptors(UserContextInterceptor)
@@ -46,7 +47,8 @@ export class ProjectManagementController {
   constructor(
     private readonly projectManagementService: ProjectManagementService,
     private readonly regulationService: RegulationService,
-    private readonly gitSyncService: GitSyncService
+    private readonly gitSyncService: GitSyncService,
+    private readonly configProvisioningService: ConfigProjectProvisioningService,
   ) { }
 
   @MessagePattern(ProjectManagementTopics.GET_USERS)
@@ -332,6 +334,13 @@ export class ProjectManagementController {
   @MessagePattern(ProjectManagementTopics.CHECK_RELEASE_EXISTS)
   checkReleaseExists(@RpcPayload() dto: CheckReleaseExistsDto) {
     return this.gitSyncService.checkReleaseExists(dto);
+  }
+
+  // CONFIG PROJECT PROVISIONING
+
+  @MessagePattern(ProjectManagementTopics.CONFIG_PROVISION_ALL)
+  provisionAllConfigProjects() {
+    return this.configProvisioningService.provisionAll();
   }
 
   private readImageVersion() {

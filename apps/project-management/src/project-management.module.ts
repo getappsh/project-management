@@ -18,6 +18,7 @@ import { MicroserviceModule, MicroserviceName, MicroserviceType } from '@app/com
 import { SafeCronModule } from '@app/common/safe-cron';
 import { VaultModule } from '@app/common/vault';
 import { VaultCredentialsMigrationService } from './vault-credentials-migration.service';
+import { ConfigProjectProvisioningService } from './config-project-provisioning.service';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { VaultCredentialsMigrationService } from './vault-credentials-migration.
     GitSyncScheduler,
     SeederService,
     VaultCredentialsMigrationService,
+    ConfigProjectProvisioningService,
     {
       provide: PROJECT_ACCESS_SERVICE,
       useExisting: ProjectManagementService
