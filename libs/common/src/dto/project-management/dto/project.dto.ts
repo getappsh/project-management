@@ -158,6 +158,13 @@ export class ProjectDto extends BaseProjectDto {
   @ApiProperty({ required: false, type: ProjectSummaryDto, description: 'Summary of the project' })
   summary?: ProjectSummaryDto
 
+  @ApiProperty({
+    required: false,
+    description:
+      'Semantic version of the currently active config revision (only set for CONFIG and CONFIG_MAP project types)',
+  })
+  configSemVer?: string | null;
+
   fromProjectEntity(project: ProjectEntity) {
     super.fromProjectEntity(project);
 

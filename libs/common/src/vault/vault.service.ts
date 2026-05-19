@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 
-export type VaultSecretField = 'ssh_key' | 'https_password';
+export type VaultSecretField = 'ssh_key' | 'https_password' | 'config_value';
 
 /** Thrown when any Vault API call fails – lets callers distinguish Vault errors from user/auth errors. */
 export class VaultOperationError extends Error {
