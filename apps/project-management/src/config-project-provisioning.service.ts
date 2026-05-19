@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ProjectEntity, ProjectType, ReleaseEntity, ReleaseStatusEnum } from '@app/common/database/entities';
+import { ProjectEntity, ProjectType } from '@app/common/database/entities';
 import { MicroserviceClient, MicroserviceName } from '@app/common/microservice-client';
 import { DeviceTopics, UploadTopics } from '@app/common/microservice-client/topics';
 import { lastValueFrom } from 'rxjs';
@@ -13,8 +13,6 @@ export class ConfigProjectProvisioningService implements OnModuleInit, OnApplica
   constructor(
     @InjectRepository(ProjectEntity)
     private readonly projectRepo: Repository<ProjectEntity>,
-    @InjectRepository(ReleaseEntity)
-    private readonly releaseRepo: Repository<ReleaseEntity>,
     @Inject(MicroserviceName.DEVICE_SERVICE) private readonly deviceClient: MicroserviceClient,
     @Inject(MicroserviceName.UPLOAD_SERVICE) private readonly uploadClient: MicroserviceClient,
   ) {}
@@ -78,16 +76,6 @@ export class ConfigProjectProvisioningService implements OnModuleInit, OnApplica
           projectName: `Config – ${deviceId}`,
           projectType: ProjectType.CONFIG,
           description: `Auto-created config project for device ${deviceId}`,
-        }),
-      );
-
-      // Create a permanent "latest" release so component_offering FK is satisfied
-      await this.releaseRepo.save(
-        this.releaseRepo.create({
-          version: 'latest',
-          status: ReleaseStatusEnum.RELEASED,
-          project: { id: project.id } as ProjectEntity,
-          metadata: {},
         }),
       );
 

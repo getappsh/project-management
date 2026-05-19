@@ -74,9 +74,15 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       : { name: projectIdentifier };
   }
 
-  getMemberInProject(projectIdentifier: string | number, email: string): Promise<MemberProjectEntity | null> {
+  async getMemberInProject(projectIdentifier: string | number, email: string): Promise<MemberProjectEntity | null> {
     this.logger.verbose(`Get member in project with email: ${email} and project-identifier: ${projectIdentifier}`)
     const projectCondition = this.findProjectCondition(projectIdentifier);
+
+    // Allow any authenticated user to access CONFIG / CONFIG_MAP projects
+    const project = await this.projectRepo.findOne({ where: projectCondition });
+    if (project && (project.projectType === ProjectType.CONFIG || project.projectType === ProjectType.CONFIG_MAP)) {
+      return { project, role: RoleInProject.PROJECT_MEMBER } as unknown as MemberProjectEntity;
+    }
 
     return this.memberProjectRepo.findOne({
       relations: ['project', 'member'],
