@@ -469,19 +469,19 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
           try {
             // Delete stale Vault entries when credential type switches
             if (incomingSshKey && this.vaultService.isVaultRef(isNew ? null : project.gitSource?.httpsPassword ?? gitSource.httpsPassword)) {
-              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource : gitSource).id), 'https_password');
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource! : gitSource).id), 'https_password');
             }
             if (incomingHttpsPass && this.vaultService.isVaultRef(isNew ? null : project.gitSource?.sshKey ?? gitSource.sshKey)) {
-              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource : gitSource).id), 'ssh_key');
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource! : gitSource).id), 'ssh_key');
             }
-            if (incomingSshKey === null && this.vaultService.isVaultRef(isNew ? project.gitSource.sshKey : gitSource.sshKey)) {
-              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource : gitSource).id), 'ssh_key');
+            if (incomingSshKey === null && this.vaultService.isVaultRef(isNew ? project.gitSource?.sshKey : gitSource.sshKey)) {
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource! : gitSource).id), 'ssh_key');
             }
-            if (incomingHttpsPass === null && this.vaultService.isVaultRef(isNew ? project.gitSource.httpsPassword : gitSource.httpsPassword)) {
-              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource : gitSource).id), 'https_password');
+            if (incomingHttpsPass === null && this.vaultService.isVaultRef(isNew ? project.gitSource?.httpsPassword : gitSource.httpsPassword)) {
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource! : gitSource).id), 'https_password');
             }
 
-            const entityToUpdate = isNew ? project.gitSource : gitSource;
+            const entityToUpdate = isNew ? project.gitSource! : gitSource;
             const vaultMetadata = { projectName: project.name };
             if (incomingSshKey) {
               entityToUpdate.sshKey = await this.vaultService.storeSecret(gitCredentialsSecretName(entityToUpdate.id), 'ssh_key', incomingSshKey, vaultMetadata);
@@ -497,7 +497,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
             throw error;
           }
 
-          project.gitSource = await this.gitSourceRepo.save(isNew ? project.gitSource : gitSource);
+          project.gitSource = await this.gitSourceRepo.save(isNew ? project.gitSource! : gitSource);
         } else {
           // Plain-text mode
           if (dto.gitSshKey !== undefined) {
