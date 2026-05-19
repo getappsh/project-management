@@ -343,6 +343,11 @@ export class ProjectManagementController {
     return this.configProvisioningService.provisionAll();
   }
 
+  @MessagePattern(ProjectManagementTopics.CONFIG_ENSURE_DEVICE_PROJECT)
+  ensureDeviceConfigProject(@RpcPayload() dto: { deviceId: string; deviceTypeIds?: number[] }) {
+    return this.configProvisioningService.ensureDeviceConfigProject(dto);
+  }
+
   private readImageVersion() {
     let version = 'unknown'
     try {

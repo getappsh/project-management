@@ -52,6 +52,7 @@ export const UploadTopics = {
 
     // Config
     CONFIG_ENSURE_DEVICE_PROJECT: `getapp-upload.config.ensure-device-project${region}`,
+    CONFIG_PROVISION_PROJECT_CONTENT: `getapp-upload.config.provision-project-content${region}`,
 
 } as const
 
