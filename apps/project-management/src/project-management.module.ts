@@ -19,6 +19,7 @@ import { SafeCronModule } from '@app/common/safe-cron';
 import { VaultModule } from '@app/common/vault';
 import { VaultCredentialsMigrationService } from './vault-credentials-migration.service';
 import { ConfigProjectProvisioningService } from './config-project-provisioning.service';
+import { ProjectTypeMigrationService } from './project-type-migration.service';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { ConfigProjectProvisioningService } from './config-project-provisioning.
     SeederService,
     VaultCredentialsMigrationService,
     ConfigProjectProvisioningService,
+    ProjectTypeMigrationService,
     {
       provide: PROJECT_ACCESS_SERVICE,
       useExisting: ProjectManagementService

@@ -507,20 +507,20 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
 
           try {
             // Delete stale Vault entries when credential type switches
-            if (incomingSshKey && this.vaultService.isVaultRef(isNew ? null : activeGitSource.httpsPassword)) {
-              await this.vaultService.deleteSecret(gitCredentialsSecretName(activeGitSource.id), 'https_password');
+            if (incomingSshKey && this.vaultService.isVaultRef(isNew ? null : project.gitSource?.httpsPassword ?? gitSource.httpsPassword)) {
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource! : gitSource).id), 'https_password');
             }
-            if (incomingHttpsPass && this.vaultService.isVaultRef(isNew ? null : activeGitSource.sshKey)) {
-              await this.vaultService.deleteSecret(gitCredentialsSecretName(activeGitSource.id), 'ssh_key');
+            if (incomingHttpsPass && this.vaultService.isVaultRef(isNew ? null : project.gitSource?.sshKey ?? gitSource.sshKey)) {
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource! : gitSource).id), 'ssh_key');
             }
-            if (incomingSshKey === null && this.vaultService.isVaultRef(activeGitSource.sshKey)) {
-              await this.vaultService.deleteSecret(gitCredentialsSecretName(activeGitSource.id), 'ssh_key');
+            if (incomingSshKey === null && this.vaultService.isVaultRef(isNew ? project.gitSource?.sshKey : gitSource.sshKey)) {
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource! : gitSource).id), 'ssh_key');
             }
-            if (incomingHttpsPass === null && this.vaultService.isVaultRef(activeGitSource.httpsPassword)) {
-              await this.vaultService.deleteSecret(gitCredentialsSecretName(activeGitSource.id), 'https_password');
+            if (incomingHttpsPass === null && this.vaultService.isVaultRef(isNew ? project.gitSource?.httpsPassword : gitSource.httpsPassword)) {
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource! : gitSource).id), 'https_password');
             }
 
-            const entityToUpdate = activeGitSource;
+            const entityToUpdate = isNew ? project.gitSource! : gitSource;
             const vaultMetadata = { projectName: project.name };
             if (incomingSshKey) {
               entityToUpdate.sshKey = await this.vaultService.storeSecret(gitCredentialsSecretName(entityToUpdate.id), 'ssh_key', incomingSshKey, vaultMetadata);
@@ -536,7 +536,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
             throw error;
           }
 
-          project.gitSource = await this.gitSourceRepo.save(activeGitSource);
+          project.gitSource = await this.gitSourceRepo.save(isNew ? project.gitSource! : gitSource);
         } else {
           // Plain-text mode
           if (dto.gitSshKey !== undefined) {
@@ -1257,28 +1257,32 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   }
 
   async getOrCreateGitSyncProjectToken(projectId: number): Promise<string> {
-    let tokenEntity = await this.tokenRepo.findOne({
+    const tokenEntity = await this.tokenRepo.findOne({
       where: {
         project: { id: projectId },
-        isActive: true,
         neverExpires: true,
         name: 'git-sync-system',
       },
       order: { createdDate: 'DESC' },
     });
 
-    if (!tokenEntity) {
-      this.logger.log(`Creating git-sync token for project ${projectId}`);
-      const tokenDto = await this.createToken({
-        projectId,
-        projectIdentifier: projectId,
-        name: 'git-sync-system',
-        neverExpires: true,
-      });
-      return tokenDto.token;
+    if (tokenEntity) {
+      if (!tokenEntity.isActive) {
+        throw new BadRequestException(
+          `Git sync token for project ${projectId} is disabled. Re-enable it to resume git sync.`,
+        );
+      }
+      return tokenEntity.token;
     }
 
-    return tokenEntity.token;
+    this.logger.log(`Creating git-sync token for project ${projectId}`);
+    const tokenDto = await this.createToken({
+      projectId,
+      projectIdentifier: projectId,
+      name: 'git-sync-system',
+      neverExpires: true,
+    });
+    return tokenDto.token;
   }
 
 }

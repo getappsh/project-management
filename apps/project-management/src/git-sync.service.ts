@@ -305,7 +305,7 @@ export class GitSyncService {
       try {
         const parsed = new URL(gitCloneUrl!);
         parsed.username = encodeURIComponent(gitSource.httpsUsername);
-        parsed.password = encodeURIComponent(resolvedHttpsPassword!);
+        parsed.password = encodeURIComponent(resolvedHttpsPassword ?? '');
         effectiveCloneUrl = parsed.toString();
       } catch {
         throw new Error(`Invalid git clone URL: ${gitCloneUrl}`);
