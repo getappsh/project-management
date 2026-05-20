@@ -1,4 +1,4 @@
-import { MemberProjectEntity, MemberEntity, ProjectEntity, ProjectGitSourceEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity, DocEntity, PlatformEntity, ProjectType, LabelEntity } from '@app/common/database/entities';
+import { MemberProjectEntity, MemberEntity, ProjectEntity, ProjectGitSourceEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity, DocEntity, PlatformEntity, ProjectType, LabelEntity, ConfigRevisionEntity, ConfigRevisionStatus } from '@app/common/database/entities';
 import { BadRequestException, ConflictException, ForbiddenException, forwardRef, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -35,6 +35,9 @@ import { UploadTopics } from '@app/common/microservice-client/topics';
 import { lastValueFrom } from 'rxjs';
 import { randomBytes } from 'crypto';
 import { GitSyncService } from './git-sync.service';
+import { VaultService } from '@app/common/vault';
+import { VaultOperationError } from '@app/common/vault';
+import { gitCredentialsSecretName } from './utils/vault-secret-names';
 
 
 @Injectable()
@@ -54,9 +57,11 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     @InjectRepository(DeviceEntity) private readonly deviceRepo: Repository<DeviceEntity>,
     @InjectRepository(DocEntity) private readonly docRepo: Repository<DocEntity>,
     @InjectRepository(LabelEntity) private readonly labelRepo: Repository<LabelEntity>,
+    @InjectRepository(ConfigRevisionEntity) private readonly configRevisionRepo: Repository<ConfigRevisionEntity>,
     @Inject("OidcProviderService") private readonly oidcService: OidcService,
     @Inject(MicroserviceName.UPLOAD_SERVICE) private readonly uploadClient: MicroserviceClient,
     @Inject(forwardRef(() => GitSyncService)) private readonly gitSyncService: GitSyncService,
+    private readonly vaultService: VaultService,
   ) { }
   async getUsers(params: UserSearchDto) {
     return await this.oidcService.getUsers(params)
@@ -68,9 +73,15 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       : { name: projectIdentifier };
   }
 
-  getMemberInProject(projectIdentifier: string | number, email: string): Promise<MemberProjectEntity | null> {
+  async getMemberInProject(projectIdentifier: string | number, email: string): Promise<MemberProjectEntity | null> {
     this.logger.verbose(`Get member in project with email: ${email} and project-identifier: ${projectIdentifier}`)
     const projectCondition = this.findProjectCondition(projectIdentifier);
+
+    // Allow any authenticated user to access CONFIG / CONFIG_MAP projects
+    const project = await this.projectRepo.findOne({ where: projectCondition });
+    if (project && (project.projectType === ProjectType.CONFIG || project.projectType === ProjectType.CONFIG_MAP)) {
+      return { project, role: RoleInProject.PROJECT_MEMBER } as unknown as MemberProjectEntity;
+    }
 
     return this.memberProjectRepo.findOne({
       relations: ['project', 'member'],
@@ -94,7 +105,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
 
   async getProjects(query: GetProjectsQueryDto, email: string): Promise<PaginatedResultDto<ProjectDto>> {
     this.logger.debug(`Get projects with query: ${JSON.stringify(query)}`)
-    const { page = 1, perPage = 10, pinned, includePinned, projectNames, archived } = query;
+    const { page = 1, perPage = 10, pinned, includePinned, projectNames, archived,  projectTypes } = query;
 
     const pinnedQuery: { pinned?: boolean } = { pinned: undefined };
     if (includePinned === false) {
@@ -106,6 +117,11 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
 
     // Default: return only non-archived projects. Pass archived=true to get archived ones.
     const archivedCondition = archived === true ? Not(IsNull()) : IsNull();
+
+    // If specific types are requested, filter to those; otherwise exclude config types by default
+    const typeFilter = projectTypes && projectTypes.length > 0
+      ? { projectType: In(projectTypes) }
+      : { projectType: Not(In([ProjectType.CONFIG, ProjectType.CONFIG_MAP])) };
 
     // When projectNames is provided (e.g., from discovery service), skip user/member filtering
     let whereCondition: any;
@@ -124,6 +140,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
           ...pinnedQuery
         },
         archivedAt: archivedCondition,
+        ...typeFilter
       };
     }
 
@@ -159,6 +176,24 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       return dto
     });
 
+    // Enrich CONFIG / CONFIG_MAP projects with the active revision's semVer
+    const configProjectIds = projectsEntities
+      .filter(p => p.projectType === ProjectType.CONFIG || p.projectType === ProjectType.CONFIG_MAP)
+      .map(p => p.id);
+
+    if (configProjectIds.length > 0) {
+      const activeRevisions = await this.configRevisionRepo.find({
+        where: { projectId: In(configProjectIds), status: ConfigRevisionStatus.ACTIVE },
+        select: ['projectId', 'semVer'],
+      });
+      const semVerMap = new Map(activeRevisions.map(r => [r.projectId, r.semVer ?? null]));
+      for (const dto of projects) {
+        if (dto.projectType === ProjectType.CONFIG || dto.projectType === ProjectType.CONFIG_MAP) {
+          dto.configSemVer = semVerMap.get(dto.id) ?? null;
+        }
+      }
+    }
+
     return {
       data: projects,
       total: count,
@@ -171,7 +206,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   // TODO status not implemented
   async searchProjects(dto: SearchProjectsQueryDto, email: string): Promise<PaginatedResultDto<BaseProjectDto>> {
     this.logger.debug(`Search projects with query: ${JSON.stringify(dto)}`)
-    const { page = 1 , perPage = 10, query, status, includeUnassociated } = dto;
+    const { page = 1 , perPage = 10, query, status, includeUnassociated, projectTypes } = dto;
     const whereCondition: any = { archivedAt: IsNull() };
     
     if (includeUnassociated !== true) {
@@ -179,6 +214,11 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     }
     if (query && query.trim() !== "") {
       whereCondition.name = ILike(`%${query}%`);
+    }
+    if (projectTypes && projectTypes.length > 0) {
+      whereCondition.projectType = In(projectTypes);
+    } else {
+      whereCondition.projectType = Not(In([ProjectType.CONFIG, ProjectType.CONFIG_MAP]));
     }
 
     const [projectsEntities, count] = await this.projectRepo.findAndCount({
@@ -303,18 +343,49 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       gitSource.getappFilePath = projectDto.gitGetappFilePath;
       gitSource.webhookUrl = this.generateWebhookUrl(webhookToken, projectDto.apiBaseUrl);
 
-      // SSH key and HTTPS credentials are mutually exclusive
-      if (projectDto.gitSshKey) {
-        gitSource.sshKey = projectDto.gitSshKey;
-        gitSource.httpsUsername = null;
-        gitSource.httpsPassword = null;
-      } else {
-        gitSource.sshKey = null;
-        gitSource.httpsUsername = projectDto.gitHttpsUsername;
-        gitSource.httpsPassword = projectDto.gitHttpsPassword;
-      }
+      const rawSshKey = projectDto.gitSshKey ?? null;
+      const rawHttpsPassword = projectDto.gitHttpsPassword ?? null;
 
-      project.gitSource = await this.gitSourceRepo.save(gitSource);
+      if (this.vaultService.isEnabled) {
+        // When Vault is active, never write plain-text credentials to the DB.
+        // Save first with nulls to obtain the entity ID, then store in Vault,
+        // then persist the Vault references.
+        gitSource.sshKey = null;
+        gitSource.httpsUsername = rawSshKey ? null : (projectDto.gitHttpsUsername ?? null);
+        gitSource.httpsPassword = null;
+        project.gitSource = await this.gitSourceRepo.save(gitSource);
+
+        try {
+          const vaultMetadata = { projectName: project.name };
+          if (rawSshKey) {
+            project.gitSource.sshKey = await this.vaultService.storeSecret(gitCredentialsSecretName(project.gitSource.id), 'ssh_key', rawSshKey, vaultMetadata);
+          }
+          if (rawHttpsPassword) {
+            project.gitSource.httpsPassword = await this.vaultService.storeSecret(gitCredentialsSecretName(project.gitSource.id), 'https_password', rawHttpsPassword, vaultMetadata);
+          }
+          if (rawSshKey || rawHttpsPassword) {
+            project.gitSource = await this.gitSourceRepo.save(project.gitSource);
+          }
+        } catch (error) {
+          if (error instanceof VaultOperationError) {
+            this.logger.error(`[Vault] Failed to store git credentials in Vault for project ${project.id}. This is a Vault infrastructure error, not a user permissions issue. Detail: ${error.message}`);
+            throw new InternalServerErrorException('Failed to securely store git credentials. This is a server-side Vault configuration issue — please contact your administrator.');
+          }
+          throw error;
+        }
+      } else {
+        // Plain-text mode
+        if (rawSshKey) {
+          gitSource.sshKey = rawSshKey;
+          gitSource.httpsUsername = null;
+          gitSource.httpsPassword = null;
+        } else {
+          gitSource.sshKey = null;
+          gitSource.httpsUsername = projectDto.gitHttpsUsername ?? null;
+          gitSource.httpsPassword = rawHttpsPassword;
+        }
+        project.gitSource = await this.gitSourceRepo.save(gitSource);
+      }
     }
 
     this.logger.debug(`Member: ${member}`)
@@ -406,7 +477,89 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
         if (!project.gitSource) {
           gitSource.project = project;
         }
-        project.gitSource = await this.gitSourceRepo.save(gitSource);
+
+        if (this.vaultService.isEnabled) {
+          // When Vault is active, never write plain-text credentials to the DB.
+          // For new entities: save with nulls first to obtain the DB ID.
+          // For existing entities: the ID is already present – Vault store can happen before the save.
+          const isNew = !gitSource.id;
+
+          // Collect the incoming raw values (undefined = not changing this field)
+          const incomingSshKey    = dto.gitSshKey;
+          const incomingHttpsPass = dto.gitHttpsPassword;
+          const incomingHttpsUser = dto.gitHttpsUsername;
+
+          // Apply credential field intent (nulling out the other side as needed)
+          if (incomingSshKey !== undefined) {
+            gitSource.sshKey = null;         // will be filled with Vault ref below (or stay null if clearing)
+            gitSource.httpsUsername = incomingSshKey ? null : gitSource.httpsUsername;
+            gitSource.httpsPassword = incomingSshKey ? null : gitSource.httpsPassword;
+          } else if (incomingHttpsPass !== undefined || incomingHttpsUser !== undefined) {
+            gitSource.httpsUsername = incomingHttpsUser !== undefined ? incomingHttpsUser : gitSource.httpsUsername;
+            gitSource.httpsPassword = null;  // will be filled with Vault ref below (or stay null if clearing)
+            if (gitSource.httpsUsername || incomingHttpsPass) {
+              gitSource.sshKey = null;
+            }
+          }
+
+          if (isNew) {
+            project.gitSource = await this.gitSourceRepo.save(gitSource);
+          }
+
+          // After the isNew branch, project.gitSource is guaranteed set; for existing, gitSource has the ID.
+          const activeGitSource = (isNew ? project.gitSource! : gitSource);
+
+          try {
+            // Delete stale Vault entries when credential type switches
+            if (incomingSshKey && this.vaultService.isVaultRef(isNew ? null : project.gitSource?.httpsPassword ?? gitSource.httpsPassword)) {
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource! : gitSource).id), 'https_password');
+            }
+            if (incomingHttpsPass && this.vaultService.isVaultRef(isNew ? null : project.gitSource?.sshKey ?? gitSource.sshKey)) {
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource! : gitSource).id), 'ssh_key');
+            }
+            if (incomingSshKey === null && this.vaultService.isVaultRef(isNew ? project.gitSource?.sshKey : gitSource.sshKey)) {
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource! : gitSource).id), 'ssh_key');
+            }
+            if (incomingHttpsPass === null && this.vaultService.isVaultRef(isNew ? project.gitSource?.httpsPassword : gitSource.httpsPassword)) {
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource! : gitSource).id), 'https_password');
+            }
+
+            const entityToUpdate = isNew ? project.gitSource! : gitSource;
+            const vaultMetadata = { projectName: project.name };
+            if (incomingSshKey) {
+              entityToUpdate.sshKey = await this.vaultService.storeSecret(gitCredentialsSecretName(entityToUpdate.id), 'ssh_key', incomingSshKey, vaultMetadata);
+            }
+            if (incomingHttpsPass) {
+              entityToUpdate.httpsPassword = await this.vaultService.storeSecret(gitCredentialsSecretName(entityToUpdate.id), 'https_password', incomingHttpsPass, vaultMetadata);
+            }
+          } catch (error) {
+            if (error instanceof VaultOperationError) {
+              this.logger.error(`[Vault] Failed to store git credentials in Vault for project ${dto.projectId}. This is a Vault infrastructure error, not a user permissions issue. Detail: ${error.message}`);
+              throw new InternalServerErrorException('Failed to securely store git credentials. This is a server-side Vault configuration issue — please contact your administrator.');
+            }
+            throw error;
+          }
+
+          project.gitSource = await this.gitSourceRepo.save(isNew ? project.gitSource! : gitSource);
+        } else {
+          // Plain-text mode
+          if (dto.gitSshKey !== undefined) {
+            if (dto.gitSshKey) {
+              gitSource.sshKey = dto.gitSshKey;
+              gitSource.httpsUsername = null;
+              gitSource.httpsPassword = null;
+            } else {
+              gitSource.sshKey = null;
+            }
+          } else if (dto.gitHttpsUsername !== undefined || dto.gitHttpsPassword !== undefined) {
+            gitSource.httpsUsername = dto.gitHttpsUsername !== undefined ? dto.gitHttpsUsername : gitSource.httpsUsername;
+            gitSource.httpsPassword = dto.gitHttpsPassword !== undefined ? dto.gitHttpsPassword : gitSource.httpsPassword;
+            if (gitSource.httpsUsername || gitSource.httpsPassword) {
+              gitSource.sshKey = null;
+            }
+          }
+          project.gitSource = await this.gitSourceRepo.save(gitSource);
+        }
       }
     }
 
@@ -772,6 +925,15 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     const dto = new DetailedProjectDto().fromProjectEntity(project);
     const member = project.memberProject.find(mp => mp.member.email === email);
     dto.memberContext = member ? new ProjectMemberContextDto().fromMemberProjectEntity(member) : undefined;
+
+    if (project.projectType === ProjectType.CONFIG || project.projectType === ProjectType.CONFIG_MAP) {
+      const activeRevision = await this.configRevisionRepo.findOne({
+        where: { projectId: project.id, status: ConfigRevisionStatus.ACTIVE },
+        select: ['semVer'],
+      });
+      dto.configSemVer = activeRevision?.semVer ?? null;
+    }
+
     return dto
   }
 
@@ -838,7 +1000,12 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   async getProjectTokens(projectId: number): Promise<ProjectTokenDto[]> {
     this.logger.log(`Get all tokens for project with id ${projectId}`);
     const tokens = await this.tokenRepo.find({ where: { project: { id: projectId } } })
-    return tokens.map(t => ProjectTokenDto.fromProjectTokenEntity(t))
+    return tokens.map(t => {
+      const dto = ProjectTokenDto.fromProjectTokenEntity(t);
+      const payload = this.jwtService.decode(t.token) as any;
+      dto.description = payload?.data?.description;
+      return dto;
+    })
   }
 
   async getProjectTokenById(params: TokenParams): Promise<ProjectTokenDto> {
@@ -847,7 +1014,10 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     if (!token) {
       throw new NotFoundException(`Token with id ${params.tokenId} for project with id ${params.projectId} not found`)
     }
-    return ProjectTokenDto.fromProjectTokenEntity(token)
+    const dto = ProjectTokenDto.fromProjectTokenEntity(token);
+    const payload = this.jwtService.decode(token.token) as any;
+    dto.description = payload?.data?.description;
+    return dto;
   }
 
   async createToken(dto: CreateProjectTokenDto): Promise<ProjectTokenDto> {
@@ -860,7 +1030,8 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       project.name,
       dto.name,
       dto.neverExpires ?? false,
-      expirationDate
+      expirationDate,
+      dto.description
     );
 
     this.logger.log(`Generated Token: ${token.slice(token.length - 10)}`);
@@ -876,7 +1047,9 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     projectToken.project = project;
     try {
       const savedProjectToken = await this.tokenRepo.save(projectToken);
-      return ProjectTokenDto.fromProjectTokenEntity(savedProjectToken);
+      const result = ProjectTokenDto.fromProjectTokenEntity(savedProjectToken);
+      result.description = dto.description;
+      return result;
     } catch (error) {
       throw new InternalServerErrorException(error);
     }
@@ -909,9 +1082,9 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   }
 
 
-  private generateToken(projectId: number, projectName: string, name: string, neverExpires: boolean, expirationDate?: Date): string {
+  private generateToken(projectId: number, projectName: string, name: string, neverExpires: boolean, expirationDate?: Date, description?: string): string {
     this.logger.log(`Generate token for project with id ${projectId}`);
-    const payload = { projectId, projectName, name, neverExpires }
+    const payload = { projectId, projectName, name, neverExpires, description }
     const expiresIn = neverExpires
       ? '100y'
       : expirationDate
@@ -1139,28 +1312,32 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   }
 
   async getOrCreateGitSyncProjectToken(projectId: number): Promise<string> {
-    let tokenEntity = await this.tokenRepo.findOne({
+    const tokenEntity = await this.tokenRepo.findOne({
       where: {
         project: { id: projectId },
-        isActive: true,
         neverExpires: true,
         name: 'git-sync-system',
       },
       order: { createdDate: 'DESC' },
     });
 
-    if (!tokenEntity) {
-      this.logger.log(`Creating git-sync token for project ${projectId}`);
-      const tokenDto = await this.createToken({
-        projectId,
-        projectIdentifier: projectId,
-        name: 'git-sync-system',
-        neverExpires: true,
-      });
-      return tokenDto.token;
+    if (tokenEntity) {
+      if (!tokenEntity.isActive) {
+        throw new BadRequestException(
+          `Git sync token for project ${projectId} is disabled. Re-enable it to resume git sync.`,
+        );
+      }
+      return tokenEntity.token;
     }
 
-    return tokenEntity.token;
+    this.logger.log(`Creating git-sync token for project ${projectId}`);
+    const tokenDto = await this.createToken({
+      projectId,
+      projectIdentifier: projectId,
+      name: 'git-sync-system',
+      neverExpires: true,
+    });
+    return tokenDto.token;
   }
 
 }
