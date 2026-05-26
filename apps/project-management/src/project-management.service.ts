@@ -1,8 +1,8 @@
-import { MemberProjectEntity, MemberEntity, ProjectEntity, ProjectGitSourceEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity, DocEntity, PlatformEntity, ProjectType, LabelEntity, ApplicationCategory } from '@app/common/database/entities';
+import { MemberProjectEntity, MemberEntity, ProjectEntity, ProjectGitSourceEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity, DocEntity, PlatformEntity, ProjectType, LabelEntity, ConfigRevisionEntity, ConfigRevisionStatus, ApplicationCategory } from '@app/common/database/entities';
 import { BadRequestException, ConflictException, ForbiddenException, forwardRef, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, ILike, In } from 'typeorm';
+import { Repository, ILike, In, Not } from 'typeorm';
 import { AddMemberToProjectDto, EditProjectMemberDto, ProjectMemberParams, ProjectMemberPreferencesDto } from '@app/common/dto/project-management/dto/project-member.dto';
 import {
   DeviceResDto, ProjectReleasesDto, ProjectTokenDto,
@@ -58,6 +58,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     @InjectRepository(DeviceEntity) private readonly deviceRepo: Repository<DeviceEntity>,
     @InjectRepository(DocEntity) private readonly docRepo: Repository<DocEntity>,
     @InjectRepository(LabelEntity) private readonly labelRepo: Repository<LabelEntity>,
+    @InjectRepository(ConfigRevisionEntity) private readonly configRevisionRepo: Repository<ConfigRevisionEntity>,
     @Inject("OidcProviderService") private readonly oidcService: OidcService,
     @Inject(MicroserviceName.UPLOAD_SERVICE) private readonly uploadClient: MicroserviceClient,
     @Inject(forwardRef(() => GitSyncService)) private readonly gitSyncService: GitSyncService,
@@ -73,9 +74,15 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       : { name: projectIdentifier };
   }
 
-  getMemberInProject(projectIdentifier: string | number, email: string): Promise<MemberProjectEntity | null> {
+  async getMemberInProject(projectIdentifier: string | number, email: string): Promise<MemberProjectEntity | null> {
     this.logger.verbose(`Get member in project with email: ${email} and project-identifier: ${projectIdentifier}`)
     const projectCondition = this.findProjectCondition(projectIdentifier);
+
+    // Allow any authenticated user to access CONFIG / CONFIG_MAP projects
+    const project = await this.projectRepo.findOne({ where: projectCondition });
+    if (project && (project.projectType === ProjectType.CONFIG || project.projectType === ProjectType.CONFIG_MAP)) {
+      return { project, role: RoleInProject.PROJECT_MEMBER } as unknown as MemberProjectEntity;
+    }
 
     return this.memberProjectRepo.findOne({
       relations: ['project', 'member'],
@@ -99,7 +106,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
 
   async getProjects(query: GetProjectsQueryDto, email: string): Promise<PaginatedResultDto<ProjectDto>> {
     this.logger.debug(`Get projects with query: ${JSON.stringify(query)}`)
-    const { page = 1, perPage = 10, pinned, includePinned, projectNames } = query;
+    const { page = 1, perPage = 10, pinned, includePinned, projectNames, projectTypes } = query;
 
     const pinnedQuery: { pinned?: boolean } = { pinned: undefined };
     if (includePinned === false) {
@@ -108,6 +115,11 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     if (pinned === true) {
       pinnedQuery.pinned = true;
     }
+
+    // If specific types are requested, filter to those; otherwise exclude config types by default
+    const typeFilter = projectTypes && projectTypes.length > 0
+      ? { projectType: In(projectTypes) }
+      : { projectType: Not(In([ProjectType.CONFIG, ProjectType.CONFIG_MAP])) };
 
     // When projectNames is provided (e.g., from discovery service), skip user/member filtering
     let whereCondition: any;
@@ -124,6 +136,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
           member: { email: email },
           ...pinnedQuery
         },
+        ...typeFilter
       };
     }
 
@@ -159,6 +172,24 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       return dto
     });
 
+    // Enrich CONFIG / CONFIG_MAP projects with the active revision's semVer
+    const configProjectIds = projectsEntities
+      .filter(p => p.projectType === ProjectType.CONFIG || p.projectType === ProjectType.CONFIG_MAP)
+      .map(p => p.id);
+
+    if (configProjectIds.length > 0) {
+      const activeRevisions = await this.configRevisionRepo.find({
+        where: { projectId: In(configProjectIds), status: ConfigRevisionStatus.ACTIVE },
+        select: ['projectId', 'semVer'],
+      });
+      const semVerMap = new Map(activeRevisions.map(r => [r.projectId, r.semVer ?? null]));
+      for (const dto of projects) {
+        if (dto.projectType === ProjectType.CONFIG || dto.projectType === ProjectType.CONFIG_MAP) {
+          dto.configSemVer = semVerMap.get(dto.id) ?? null;
+        }
+      }
+    }
+
     return {
       data: projects,
       total: count,
@@ -171,7 +202,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   // TODO status not implemented
   async searchProjects(dto: SearchProjectsQueryDto, email: string): Promise<PaginatedResultDto<BaseProjectDto>> {
     this.logger.debug(`Search projects with query: ${JSON.stringify(dto)}`)
-    const { page = 1 , perPage = 10, query, status, includeUnassociated } = dto;
+    const { page = 1 , perPage = 10, query, status, includeUnassociated, projectTypes } = dto;
     const whereCondition: any = {};
     
     if (includeUnassociated !== true) {
@@ -179,6 +210,11 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     }
     if (query && query.trim() !== "") {
       whereCondition.name = ILike(`%${query}%`);
+    }
+    if (projectTypes && projectTypes.length > 0) {
+      whereCondition.projectType = In(projectTypes);
+    } else {
+      whereCondition.projectType = Not(In([ProjectType.CONFIG, ProjectType.CONFIG_MAP]));
     }
 
     const [projectsEntities, count] = await this.projectRepo.findAndCount({
@@ -484,22 +520,25 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
             project.gitSource = await this.gitSourceRepo.save(gitSource);
           }
 
+          // After the isNew branch, project.gitSource is guaranteed set; for existing, gitSource has the ID.
+          const activeGitSource = (isNew ? project.gitSource! : gitSource);
+
           try {
             // Delete stale Vault entries when credential type switches
             if (incomingSshKey && this.vaultService.isVaultRef(isNew ? null : project.gitSource?.httpsPassword ?? gitSource.httpsPassword)) {
-              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource : gitSource).id), 'https_password');
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource! : gitSource).id), 'https_password');
             }
             if (incomingHttpsPass && this.vaultService.isVaultRef(isNew ? null : project.gitSource?.sshKey ?? gitSource.sshKey)) {
-              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource : gitSource).id), 'ssh_key');
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource! : gitSource).id), 'ssh_key');
             }
-            if (incomingSshKey === null && this.vaultService.isVaultRef(isNew ? project.gitSource.sshKey : gitSource.sshKey)) {
-              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource : gitSource).id), 'ssh_key');
+            if (incomingSshKey === null && this.vaultService.isVaultRef(isNew ? project.gitSource?.sshKey : gitSource.sshKey)) {
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource! : gitSource).id), 'ssh_key');
             }
-            if (incomingHttpsPass === null && this.vaultService.isVaultRef(isNew ? project.gitSource.httpsPassword : gitSource.httpsPassword)) {
-              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource : gitSource).id), 'https_password');
+            if (incomingHttpsPass === null && this.vaultService.isVaultRef(isNew ? project.gitSource?.httpsPassword : gitSource.httpsPassword)) {
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource! : gitSource).id), 'https_password');
             }
 
-            const entityToUpdate = isNew ? project.gitSource : gitSource;
+            const entityToUpdate = isNew ? project.gitSource! : gitSource;
             const vaultMetadata = { projectName: project.name };
             if (incomingSshKey) {
               entityToUpdate.sshKey = await this.vaultService.storeSecret(gitCredentialsSecretName(entityToUpdate.id), 'ssh_key', incomingSshKey, vaultMetadata);
@@ -515,7 +554,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
             throw error;
           }
 
-          project.gitSource = await this.gitSourceRepo.save(isNew ? project.gitSource : gitSource);
+          project.gitSource = await this.gitSourceRepo.save(isNew ? project.gitSource! : gitSource);
         } else {
           // Plain-text mode
           if (dto.gitSshKey !== undefined) {
@@ -857,6 +896,15 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     const dto = new DetailedProjectDto().fromProjectEntity(project);
     const member = project.memberProject.find(mp => mp.member.email === email);
     dto.memberContext = member ? new ProjectMemberContextDto().fromMemberProjectEntity(member) : undefined;
+
+    if (project.projectType === ProjectType.CONFIG || project.projectType === ProjectType.CONFIG_MAP) {
+      const activeRevision = await this.configRevisionRepo.findOne({
+        where: { projectId: project.id, status: ConfigRevisionStatus.ACTIVE },
+        select: ['semVer'],
+      });
+      dto.configSemVer = activeRevision?.semVer ?? null;
+    }
+
     return dto
   }
 
@@ -1246,28 +1294,32 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   }
 
   async getOrCreateGitSyncProjectToken(projectId: number): Promise<string> {
-    let tokenEntity = await this.tokenRepo.findOne({
+    const tokenEntity = await this.tokenRepo.findOne({
       where: {
         project: { id: projectId },
-        isActive: true,
         neverExpires: true,
         name: 'git-sync-system',
       },
       order: { createdDate: 'DESC' },
     });
 
-    if (!tokenEntity) {
-      this.logger.log(`Creating git-sync token for project ${projectId}`);
-      const tokenDto = await this.createToken({
-        projectId,
-        projectIdentifier: projectId,
-        name: 'git-sync-system',
-        neverExpires: true,
-      });
-      return tokenDto.token;
+    if (tokenEntity) {
+      if (!tokenEntity.isActive) {
+        throw new BadRequestException(
+          `Git sync token for project ${projectId} is disabled. Re-enable it to resume git sync.`,
+        );
+      }
+      return tokenEntity.token;
     }
 
-    return tokenEntity.token;
+    this.logger.log(`Creating git-sync token for project ${projectId}`);
+    const tokenDto = await this.createToken({
+      projectId,
+      projectIdentifier: projectId,
+      name: 'git-sync-system',
+      neverExpires: true,
+    });
+    return tokenDto.token;
   }
 
 }

@@ -1,5 +1,5 @@
 import { DatabaseModule, UploadJwtConfigService,  } from '@app/common';
-import { MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity, PlatformEntity, LabelEntity } from '@app/common/database/entities';
+import { MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity, PlatformEntity, LabelEntity, ConfigRevisionEntity, ReleaseEntity } from '@app/common/database/entities';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -18,6 +18,8 @@ import { MicroserviceModule, MicroserviceName, MicroserviceType } from '@app/com
 import { SafeCronModule } from '@app/common/safe-cron';
 import { VaultModule } from '@app/common/vault';
 import { VaultCredentialsMigrationService } from './vault-credentials-migration.service';
+import { ConfigProjectProvisioningService } from './config-project-provisioning.service';
+import { ProjectTypeMigrationService } from './project-type-migration.service';
 
 @Module({
   imports: [
@@ -31,12 +33,18 @@ import { VaultCredentialsMigrationService } from './vault-credentials-migration.
     TypeOrmModule.forFeature([
       MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, 
       RegulationEntity, RegulationTypeEntity, PlatformEntity,
-      DeviceEntity, ProjectTokenEntity, DocEntity, LabelEntity
+      DeviceEntity, ProjectTokenEntity, DocEntity, LabelEntity,
+      ConfigRevisionEntity, ReleaseEntity,
     ]),
     OidcModule.forRoot(),
     MicroserviceModule.register({
       name: MicroserviceName.UPLOAD_SERVICE,
       type: MicroserviceType.UPLOAD,
+      id: "project-management"
+    }),
+    MicroserviceModule.register({
+      name: MicroserviceName.DEVICE_SERVICE,
+      type: MicroserviceType.DEVICE,
       id: "project-management"
     }),
     SafeCronModule,
@@ -50,6 +58,8 @@ import { VaultCredentialsMigrationService } from './vault-credentials-migration.
     GitSyncScheduler,
     SeederService,
     VaultCredentialsMigrationService,
+    ConfigProjectProvisioningService,
+    ProjectTypeMigrationService,
     {
       provide: PROJECT_ACCESS_SERVICE,
       useExisting: ProjectManagementService
