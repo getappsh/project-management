@@ -1,4 +1,4 @@
-import { MemberProjectEntity, MemberEntity, ProjectEntity, ProjectGitSourceEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity, DocEntity, PlatformEntity, ProjectType, LabelEntity, ConfigRevisionEntity, ConfigRevisionStatus } from '@app/common/database/entities';
+import { MemberProjectEntity, MemberEntity, ProjectEntity, ProjectGitSourceEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity, DocEntity, PlatformEntity, ProjectType, LabelEntity, ConfigRevisionEntity, ConfigRevisionStatus, ApplicationCategory } from '@app/common/database/entities';
 import { BadRequestException, ConflictException, ForbiddenException, forwardRef, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -308,6 +308,9 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     project.projectName = projectDto.projectName;
     project.description = projectDto.description;
     project.projectType = projectDto.projectType ?? ProjectType.APPLICATION;
+    project.applicationCategory = project.projectType === ProjectType.APPLICATION
+      ? (projectDto.applicationCategory ?? ApplicationCategory.USER)
+      : null;
 
     this.enforceProjectRestrictions({ projectType: project.projectType, platforms: projectDto.platforms });
 
@@ -317,10 +320,12 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       projectDto.label ? this.getOrCreateLabel(projectDto.label) : Promise.resolve(null)
     ]);
 
-    project.platforms = platforms ?? [];
     if (label) {
+      this.validateLabelCategoryMatch(label, project.applicationCategory);
       project.label = label;
     }
+
+    project.platforms = platforms ?? [];
 
     try {
       project = await this.projectRepo.save(project);
@@ -406,7 +411,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
 
     const project = await this.projectRepo.findOne({
       where: { id: dto.projectId },
-      relations: { gitSource: true },
+      relations: { gitSource: true, label: true },
     });
     if (!project) {
       throw new NotFoundException('Project not found');
@@ -426,11 +431,24 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     project.description = dto.description ?? project.description;
     project.projectType = dto.projectType ?? project.projectType;
 
+    if (dto.applicationCategory !== undefined) {
+      project.applicationCategory = project.projectType === ProjectType.APPLICATION
+        ? (dto.applicationCategory ?? null)
+        : null;
+
+      // Validate existing label is compatible with new category
+      if (project.label && project.applicationCategory) {
+        this.validateLabelCategoryMatch(project.label, project.applicationCategory);
+      }
+    }
+
     if (dto.label !== undefined) {
       if (dto.label === null || dto.label === '') {
         project.label = null;
       } else {
-        project.label = await this.getOrCreateLabel(dto.label);
+        const label = await this.getOrCreateLabel(dto.label);
+        this.validateLabelCategoryMatch(label, project.applicationCategory);
+        project.label = label;
       }
     }
 
@@ -575,6 +593,14 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   }
 
   private enforceProjectRestrictions(_project: { projectType: ProjectType, platforms?: string[] }) {
+  }
+
+  private validateLabelCategoryMatch(label: LabelEntity, applicationCategory: ApplicationCategory | null) {
+    if (label.applicationCategory && applicationCategory && label.applicationCategory !== applicationCategory) {
+      throw new BadRequestException(
+        `Label '${label.name}' belongs to '${label.applicationCategory}' applications and cannot be assigned to a '${applicationCategory}' application`
+      );
+    }
   }
 
   async deleteProject(params: ProjectIdentifierParams): Promise<string> {
@@ -1183,6 +1209,14 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       queryBuilder.where('label.name ILIKE :name', { name: `%${query.name}%` });
     }
 
+    if (query?.applicationCategory) {
+      if (query?.name) {
+        queryBuilder.andWhere('label.application_category = :applicationCategory', { applicationCategory: query.applicationCategory });
+      } else {
+        queryBuilder.where('label.application_category = :applicationCategory', { applicationCategory: query.applicationCategory });
+      }
+    }
+
     queryBuilder.orderBy('label.name', 'ASC');
 
     const labels = await queryBuilder.getMany();
@@ -1202,7 +1236,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       );
     }
 
-    const label = this.labelRepo.create({ name: dto.name });
+    const label = this.labelRepo.create({ name: dto.name, applicationCategory: dto.applicationCategory ?? null });
     const savedLabel = await this.labelRepo.save(label);
 
     return LabelDto.fromLabelEntity(savedLabel)
@@ -1220,6 +1254,9 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     }
 
     label.name = dto.name;
+    if (dto.applicationCategory !== undefined) {
+      label.applicationCategory = dto.applicationCategory ?? null;
+    }
     const savedLabel = await this.labelRepo.save(label);
 
     return LabelDto.fromLabelEntity(savedLabel);

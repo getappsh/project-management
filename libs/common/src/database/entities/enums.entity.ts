@@ -179,6 +179,11 @@ export enum ProjectType {
     CONFIG_MAP = "config_map"
   }
 
+export enum ApplicationCategory {
+    USER = "user",
+    TECHNICIAN = "technician"
+  }
+
 export enum ConfigRevisionStatus {
     DRAFT = "draft",
     ACTIVE = "active",
