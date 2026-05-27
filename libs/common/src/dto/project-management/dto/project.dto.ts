@@ -39,6 +39,9 @@ export class BaseProjectDto {
   @ApiProperty({ required: false, description: 'Label name assigned to the project' })
   label?: string;
 
+  @ApiProperty({ required: false, description: 'Date when the project was archived. Null means the project is active.', type: Date })
+  archivedAt?: Date | null;
+
   @ApiProperty({ enum: ApplicationCategory, required: false, description: 'Application category (user or technician), only relevant for application type projects' })
   applicationCategory?: ApplicationCategory;
 
@@ -49,6 +52,7 @@ export class BaseProjectDto {
     this.description = project.description;
     this.projectType = project.projectType;
     this.label = project.label?.name;
+    this.archivedAt = project.archivedAt ?? null;
     this.applicationCategory = project.applicationCategory ?? undefined;
     // this.status = project.status;
 
