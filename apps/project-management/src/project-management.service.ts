@@ -1,8 +1,8 @@
-import { MemberProjectEntity, MemberEntity, ProjectEntity, ProjectGitSourceEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity, DocEntity, PlatformEntity, ProjectType, LabelEntity } from '@app/common/database/entities';
+import { MemberProjectEntity, MemberEntity, ProjectEntity, ProjectGitSourceEntity, RoleInProject, UploadVersionEntity, DeviceEntity, DiscoveryMessageEntity, MemberProjectStatusEnum, ProjectTokenEntity, DocEntity, PlatformEntity, ProjectType, LabelEntity, ConfigRevisionEntity, ConfigRevisionStatus, ApplicationCategory } from '@app/common/database/entities';
 import { BadRequestException, ConflictException, ForbiddenException, forwardRef, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, ILike, In } from 'typeorm';
+import { IsNull, Not, Repository, ILike, In } from 'typeorm';
 import { AddMemberToProjectDto, EditProjectMemberDto, ProjectMemberParams, ProjectMemberPreferencesDto } from '@app/common/dto/project-management/dto/project-member.dto';
 import {
   DeviceResDto, ProjectReleasesDto, ProjectTokenDto,
@@ -32,10 +32,12 @@ import { PaginatedResultDto } from '@app/common/dto/pagination.dto';
 import { ProjectAccessService } from '@app/common/utils/project-access';
 import { MicroserviceClient, MicroserviceName } from '@app/common/microservice-client';
 import { UploadTopics } from '@app/common/microservice-client/topics';
-import { ReleaseParams } from '@app/common/dto/upload';
 import { lastValueFrom } from 'rxjs';
 import { randomBytes } from 'crypto';
 import { GitSyncService } from './git-sync.service';
+import { VaultService } from '@app/common/vault';
+import { VaultOperationError } from '@app/common/vault';
+import { gitCredentialsSecretName } from './utils/vault-secret-names';
 
 
 @Injectable()
@@ -55,9 +57,11 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     @InjectRepository(DeviceEntity) private readonly deviceRepo: Repository<DeviceEntity>,
     @InjectRepository(DocEntity) private readonly docRepo: Repository<DocEntity>,
     @InjectRepository(LabelEntity) private readonly labelRepo: Repository<LabelEntity>,
+    @InjectRepository(ConfigRevisionEntity) private readonly configRevisionRepo: Repository<ConfigRevisionEntity>,
     @Inject("OidcProviderService") private readonly oidcService: OidcService,
     @Inject(MicroserviceName.UPLOAD_SERVICE) private readonly uploadClient: MicroserviceClient,
     @Inject(forwardRef(() => GitSyncService)) private readonly gitSyncService: GitSyncService,
+    private readonly vaultService: VaultService,
   ) { }
   async getUsers(params: UserSearchDto) {
     return await this.oidcService.getUsers(params)
@@ -69,9 +73,15 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       : { name: projectIdentifier };
   }
 
-  getMemberInProject(projectIdentifier: string | number, email: string): Promise<MemberProjectEntity | null> {
+  async getMemberInProject(projectIdentifier: string | number, email: string): Promise<MemberProjectEntity | null> {
     this.logger.verbose(`Get member in project with email: ${email} and project-identifier: ${projectIdentifier}`)
     const projectCondition = this.findProjectCondition(projectIdentifier);
+
+    // Allow any authenticated user to access CONFIG / CONFIG_MAP projects
+    const project = await this.projectRepo.findOne({ where: projectCondition });
+    if (project && (project.projectType === ProjectType.CONFIG || project.projectType === ProjectType.CONFIG_MAP)) {
+      return { project, role: RoleInProject.PROJECT_MEMBER } as unknown as MemberProjectEntity;
+    }
 
     return this.memberProjectRepo.findOne({
       relations: ['project', 'member'],
@@ -95,7 +105,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
 
   async getProjects(query: GetProjectsQueryDto, email: string): Promise<PaginatedResultDto<ProjectDto>> {
     this.logger.debug(`Get projects with query: ${JSON.stringify(query)}`)
-    const { page = 1, perPage = 10, pinned, includePinned, projectNames } = query;
+    const { page = 1, perPage = 10, pinned, includePinned, projectNames, archived,  projectTypes } = query;
 
     const pinnedQuery: { pinned?: boolean } = { pinned: undefined };
     if (includePinned === false) {
@@ -105,13 +115,22 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       pinnedQuery.pinned = true;
     }
 
+    // Default: return only non-archived projects. Pass archived=true to get archived ones.
+    const archivedCondition = archived === true ? Not(IsNull()) : IsNull();
+
+    // If specific types are requested, filter to those; otherwise exclude config types by default
+    const typeFilter = projectTypes && projectTypes.length > 0
+      ? { projectType: In(projectTypes) }
+      : { projectType: Not(In([ProjectType.CONFIG, ProjectType.CONFIG_MAP])) };
+
     // When projectNames is provided (e.g., from discovery service), skip user/member filtering
     let whereCondition: any;
     
     if (projectNames && Array.isArray(projectNames) && projectNames.length > 0) {
       // Direct lookup by project names without user context
       whereCondition = {
-        name: In(projectNames)
+        name: In(projectNames),
+        archivedAt: archivedCondition,
       };
     } else {
       // Normal user-context based filtering
@@ -120,6 +139,8 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
           member: { email: email },
           ...pinnedQuery
         },
+        archivedAt: archivedCondition,
+        ...typeFilter
       };
     }
 
@@ -155,6 +176,24 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       return dto
     });
 
+    // Enrich CONFIG / CONFIG_MAP projects with the active revision's semVer
+    const configProjectIds = projectsEntities
+      .filter(p => p.projectType === ProjectType.CONFIG || p.projectType === ProjectType.CONFIG_MAP)
+      .map(p => p.id);
+
+    if (configProjectIds.length > 0) {
+      const activeRevisions = await this.configRevisionRepo.find({
+        where: { projectId: In(configProjectIds), status: ConfigRevisionStatus.ACTIVE },
+        select: ['projectId', 'semVer'],
+      });
+      const semVerMap = new Map(activeRevisions.map(r => [r.projectId, r.semVer ?? null]));
+      for (const dto of projects) {
+        if (dto.projectType === ProjectType.CONFIG || dto.projectType === ProjectType.CONFIG_MAP) {
+          dto.configSemVer = semVerMap.get(dto.id) ?? null;
+        }
+      }
+    }
+
     return {
       data: projects,
       total: count,
@@ -167,14 +206,19 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   // TODO status not implemented
   async searchProjects(dto: SearchProjectsQueryDto, email: string): Promise<PaginatedResultDto<BaseProjectDto>> {
     this.logger.debug(`Search projects with query: ${JSON.stringify(dto)}`)
-    const { page = 1 , perPage = 10, query, status, includeUnassociated } = dto;
-    const whereCondition: any = {};
+    const { page = 1 , perPage = 10, query, status, includeUnassociated, projectTypes } = dto;
+    const whereCondition: any = { archivedAt: IsNull() };
     
     if (includeUnassociated !== true) {
       whereCondition.memberProject = { member: { email: email } };
     }
     if (query && query.trim() !== "") {
       whereCondition.name = ILike(`%${query}%`);
+    }
+    if (projectTypes && projectTypes.length > 0) {
+      whereCondition.projectType = In(projectTypes);
+    } else {
+      whereCondition.projectType = Not(In([ProjectType.CONFIG, ProjectType.CONFIG_MAP]));
     }
 
     const [projectsEntities, count] = await this.projectRepo.findAndCount({
@@ -264,6 +308,9 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     project.projectName = projectDto.projectName;
     project.description = projectDto.description;
     project.projectType = projectDto.projectType ?? ProjectType.APPLICATION;
+    project.applicationCategory = project.projectType === ProjectType.APPLICATION
+      ? (projectDto.applicationCategory ?? ApplicationCategory.USER)
+      : null;
 
     this.enforceProjectRestrictions({ projectType: project.projectType, platforms: projectDto.platforms });
 
@@ -273,10 +320,12 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       projectDto.label ? this.getOrCreateLabel(projectDto.label) : Promise.resolve(null)
     ]);
 
-    project.platforms = platforms ?? [];
     if (label) {
+      this.validateLabelCategoryMatch(label, project.applicationCategory);
       project.label = label;
     }
+
+    project.platforms = platforms ?? [];
 
     try {
       project = await this.projectRepo.save(project);
@@ -299,18 +348,49 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       gitSource.getappFilePath = projectDto.gitGetappFilePath;
       gitSource.webhookUrl = this.generateWebhookUrl(webhookToken, projectDto.apiBaseUrl);
 
-      // SSH key and HTTPS credentials are mutually exclusive
-      if (projectDto.gitSshKey) {
-        gitSource.sshKey = projectDto.gitSshKey;
-        gitSource.httpsUsername = null;
-        gitSource.httpsPassword = null;
-      } else {
-        gitSource.sshKey = null;
-        gitSource.httpsUsername = projectDto.gitHttpsUsername;
-        gitSource.httpsPassword = projectDto.gitHttpsPassword;
-      }
+      const rawSshKey = projectDto.gitSshKey ?? null;
+      const rawHttpsPassword = projectDto.gitHttpsPassword ?? null;
 
-      project.gitSource = await this.gitSourceRepo.save(gitSource);
+      if (this.vaultService.isEnabled) {
+        // When Vault is active, never write plain-text credentials to the DB.
+        // Save first with nulls to obtain the entity ID, then store in Vault,
+        // then persist the Vault references.
+        gitSource.sshKey = null;
+        gitSource.httpsUsername = rawSshKey ? null : (projectDto.gitHttpsUsername ?? null);
+        gitSource.httpsPassword = null;
+        project.gitSource = await this.gitSourceRepo.save(gitSource);
+
+        try {
+          const vaultMetadata = { projectName: project.name };
+          if (rawSshKey) {
+            project.gitSource.sshKey = await this.vaultService.storeSecret(gitCredentialsSecretName(project.gitSource.id), 'ssh_key', rawSshKey, vaultMetadata);
+          }
+          if (rawHttpsPassword) {
+            project.gitSource.httpsPassword = await this.vaultService.storeSecret(gitCredentialsSecretName(project.gitSource.id), 'https_password', rawHttpsPassword, vaultMetadata);
+          }
+          if (rawSshKey || rawHttpsPassword) {
+            project.gitSource = await this.gitSourceRepo.save(project.gitSource);
+          }
+        } catch (error) {
+          if (error instanceof VaultOperationError) {
+            this.logger.error(`[Vault] Failed to store git credentials in Vault for project ${project.id}. This is a Vault infrastructure error, not a user permissions issue. Detail: ${error.message}`);
+            throw new InternalServerErrorException('Failed to securely store git credentials. This is a server-side Vault configuration issue — please contact your administrator.');
+          }
+          throw error;
+        }
+      } else {
+        // Plain-text mode
+        if (rawSshKey) {
+          gitSource.sshKey = rawSshKey;
+          gitSource.httpsUsername = null;
+          gitSource.httpsPassword = null;
+        } else {
+          gitSource.sshKey = null;
+          gitSource.httpsUsername = projectDto.gitHttpsUsername ?? null;
+          gitSource.httpsPassword = rawHttpsPassword;
+        }
+        project.gitSource = await this.gitSourceRepo.save(gitSource);
+      }
     }
 
     this.logger.debug(`Member: ${member}`)
@@ -331,7 +411,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
 
     const project = await this.projectRepo.findOne({
       where: { id: dto.projectId },
-      relations: { gitSource: true },
+      relations: { gitSource: true, label: true },
     });
     if (!project) {
       throw new NotFoundException('Project not found');
@@ -351,11 +431,24 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     project.description = dto.description ?? project.description;
     project.projectType = dto.projectType ?? project.projectType;
 
+    if (dto.applicationCategory !== undefined) {
+      project.applicationCategory = project.projectType === ProjectType.APPLICATION
+        ? (dto.applicationCategory ?? null)
+        : null;
+
+      // Validate existing label is compatible with new category
+      if (project.label && project.applicationCategory) {
+        this.validateLabelCategoryMatch(project.label, project.applicationCategory);
+      }
+    }
+
     if (dto.label !== undefined) {
       if (dto.label === null || dto.label === '') {
         project.label = null;
       } else {
-        project.label = await this.getOrCreateLabel(dto.label);
+        const label = await this.getOrCreateLabel(dto.label);
+        this.validateLabelCategoryMatch(label, project.applicationCategory);
+        project.label = label;
       }
     }
 
@@ -402,7 +495,89 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
         if (!project.gitSource) {
           gitSource.project = project;
         }
-        project.gitSource = await this.gitSourceRepo.save(gitSource);
+
+        if (this.vaultService.isEnabled) {
+          // When Vault is active, never write plain-text credentials to the DB.
+          // For new entities: save with nulls first to obtain the DB ID.
+          // For existing entities: the ID is already present – Vault store can happen before the save.
+          const isNew = !gitSource.id;
+
+          // Collect the incoming raw values (undefined = not changing this field)
+          const incomingSshKey    = dto.gitSshKey;
+          const incomingHttpsPass = dto.gitHttpsPassword;
+          const incomingHttpsUser = dto.gitHttpsUsername;
+
+          // Apply credential field intent (nulling out the other side as needed)
+          if (incomingSshKey !== undefined) {
+            gitSource.sshKey = null;         // will be filled with Vault ref below (or stay null if clearing)
+            gitSource.httpsUsername = incomingSshKey ? null : gitSource.httpsUsername;
+            gitSource.httpsPassword = incomingSshKey ? null : gitSource.httpsPassword;
+          } else if (incomingHttpsPass !== undefined || incomingHttpsUser !== undefined) {
+            gitSource.httpsUsername = incomingHttpsUser !== undefined ? incomingHttpsUser : gitSource.httpsUsername;
+            gitSource.httpsPassword = null;  // will be filled with Vault ref below (or stay null if clearing)
+            if (gitSource.httpsUsername || incomingHttpsPass) {
+              gitSource.sshKey = null;
+            }
+          }
+
+          if (isNew) {
+            project.gitSource = await this.gitSourceRepo.save(gitSource);
+          }
+
+          // After the isNew branch, project.gitSource is guaranteed set; for existing, gitSource has the ID.
+          const activeGitSource = (isNew ? project.gitSource! : gitSource);
+
+          try {
+            // Delete stale Vault entries when credential type switches
+            if (incomingSshKey && this.vaultService.isVaultRef(isNew ? null : project.gitSource?.httpsPassword ?? gitSource.httpsPassword)) {
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource! : gitSource).id), 'https_password');
+            }
+            if (incomingHttpsPass && this.vaultService.isVaultRef(isNew ? null : project.gitSource?.sshKey ?? gitSource.sshKey)) {
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource! : gitSource).id), 'ssh_key');
+            }
+            if (incomingSshKey === null && this.vaultService.isVaultRef(isNew ? project.gitSource?.sshKey : gitSource.sshKey)) {
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource! : gitSource).id), 'ssh_key');
+            }
+            if (incomingHttpsPass === null && this.vaultService.isVaultRef(isNew ? project.gitSource?.httpsPassword : gitSource.httpsPassword)) {
+              await this.vaultService.deleteSecret(gitCredentialsSecretName((isNew ? project.gitSource! : gitSource).id), 'https_password');
+            }
+
+            const entityToUpdate = isNew ? project.gitSource! : gitSource;
+            const vaultMetadata = { projectName: project.name };
+            if (incomingSshKey) {
+              entityToUpdate.sshKey = await this.vaultService.storeSecret(gitCredentialsSecretName(entityToUpdate.id), 'ssh_key', incomingSshKey, vaultMetadata);
+            }
+            if (incomingHttpsPass) {
+              entityToUpdate.httpsPassword = await this.vaultService.storeSecret(gitCredentialsSecretName(entityToUpdate.id), 'https_password', incomingHttpsPass, vaultMetadata);
+            }
+          } catch (error) {
+            if (error instanceof VaultOperationError) {
+              this.logger.error(`[Vault] Failed to store git credentials in Vault for project ${dto.projectId}. This is a Vault infrastructure error, not a user permissions issue. Detail: ${error.message}`);
+              throw new InternalServerErrorException('Failed to securely store git credentials. This is a server-side Vault configuration issue — please contact your administrator.');
+            }
+            throw error;
+          }
+
+          project.gitSource = await this.gitSourceRepo.save(isNew ? project.gitSource! : gitSource);
+        } else {
+          // Plain-text mode
+          if (dto.gitSshKey !== undefined) {
+            if (dto.gitSshKey) {
+              gitSource.sshKey = dto.gitSshKey;
+              gitSource.httpsUsername = null;
+              gitSource.httpsPassword = null;
+            } else {
+              gitSource.sshKey = null;
+            }
+          } else if (dto.gitHttpsUsername !== undefined || dto.gitHttpsPassword !== undefined) {
+            gitSource.httpsUsername = dto.gitHttpsUsername !== undefined ? dto.gitHttpsUsername : gitSource.httpsUsername;
+            gitSource.httpsPassword = dto.gitHttpsPassword !== undefined ? dto.gitHttpsPassword : gitSource.httpsPassword;
+            if (gitSource.httpsUsername || gitSource.httpsPassword) {
+              gitSource.sshKey = null;
+            }
+          }
+          project.gitSource = await this.gitSourceRepo.save(gitSource);
+        }
       }
     }
 
@@ -420,28 +595,88 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   private enforceProjectRestrictions(_project: { projectType: ProjectType, platforms?: string[] }) {
   }
 
+  private validateLabelCategoryMatch(label: LabelEntity, applicationCategory: ApplicationCategory | null) {
+    if (label.applicationCategory && applicationCategory && label.applicationCategory !== applicationCategory) {
+      throw new BadRequestException(
+        `Label '${label.name}' belongs to '${label.applicationCategory}' applications and cannot be assigned to a '${applicationCategory}' application`
+      );
+    }
+  }
+
   async deleteProject(params: ProjectIdentifierParams): Promise<string> {
-    this.logger.log(`Delete project with id: ${params.projectId}`)
+    this.logger.log(`Archive (soft-delete) project with id: ${params.projectId}`)
+    const project = await this.projectRepo.findOne({
+      where: { id: params.projectId, archivedAt: IsNull() },
+    });
+
+    if (!project) {
+      throw new NotFoundException(`Project with id ${params.projectId} not found or is already archived`);
+    }
+
+    // Archive all releases in the upload service
+    try {
+      await lastValueFrom(
+        this.uploadClient.send(UploadTopics.ARCHIVE_PROJECT_RELEASES, { projectId: params.projectId }).pipe(catchRpcError()),
+        { defaultValue: null }
+      );
+    } catch (error: any) {
+      this.logger.error(`Failed to archive releases for project ${params.projectId}: ${error?.message || error?.toString()}`);
+      throw error;
+    }
+
+    project.archivedAt = new Date();
+    await this.projectRepo.save(project);
+
+    return `Project '${project.name}' archived successfully`;
+  }
+
+  async restoreProject(params: ProjectIdentifierParams): Promise<string> {
+    this.logger.log(`Restoring archived project with id: ${params.projectId}`)
+    const project = await this.projectRepo.findOne({
+      where: { id: params.projectId, archivedAt: Not(IsNull()) },
+    });
+
+    if (!project) {
+      throw new NotFoundException(`Archived project with id ${params.projectId} not found`);
+    }
+
+    // Restore all releases in the upload service (set back to DRAFT)
+    try {
+      await lastValueFrom(
+        this.uploadClient.send(UploadTopics.RESTORE_PROJECT_RELEASES, { projectId: params.projectId }).pipe(catchRpcError()),
+        { defaultValue: null }
+      );
+    } catch (error: any) {
+      this.logger.error(`Failed to restore releases for project ${params.projectId}: ${error?.message || error?.toString()}`);
+      throw error;
+    }
+
+    project.archivedAt = null;
+    await this.projectRepo.save(project);
+
+    return `Project '${project.name}' restored successfully`;
+  }
+
+  async permanentlyDeleteProject(params: ProjectIdentifierParams): Promise<string> {
+    this.logger.log(`Permanently deleting archived project with id: ${params.projectId}`)
     const project = await this.projectRepo.findOne({
       select: { releases: { version: true } },
-      where: { id: params.projectId },
+      where: { id: params.projectId, archivedAt: Not(IsNull()) },
       relations: { releases: true, deviceTypes: true }
     });
 
+    if (!project) {
+      throw new NotFoundException(`Archived project with id ${params.projectId} not found. Only archived projects can be permanently deleted.`);
+    }
+
     if (project?.releases?.length) {
-      this.logger.debug(`Send deleted request to upload for ${project.releases.length} releases`)
-      const releasesParams = project.releases.map(release => new ReleaseParams(params.projectId, release.version))
+      this.logger.debug(`Sending bulk delete request to upload for ${project.releases.length} releases`)
       try {
-        await Promise.all(releasesParams.map(release => 
-          lastValueFrom(this.uploadClient.send(UploadTopics.DELETE_RELEASE, release).pipe(catchRpcError()))
-        ))
-      } catch (error) {
-        if (error instanceof AppError){
-          if (error.errorCode == ErrorCode.RELEASE_HAS_DEPENDENTS){
-            error.errorCode = ErrorCode.PM_DELETE_PROJECT_FAILED
-            error.message = `Delete Project releases failed because some releases have dependents.`
-          }
-        }
+        await lastValueFrom(
+          this.uploadClient.send(UploadTopics.DELETE_PROJECT_RELEASES, { projectId: params.projectId }).pipe(catchRpcError()),
+          { defaultValue: null },
+        );
+      } catch (error: any) {
         this.logger.error(`Failed to delete releases for project ${params.projectId}: ${error?.message || error?.toString()}`);
         throw error;
       }
@@ -458,14 +693,13 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       if (affected === 0) {
         throw new NotFoundException(`Project with id ${params.projectId} not found, delete failed`);
       }
-      return `Project '${project?.name}' deleted successfully`;
-    } catch (error) {
-      if (error.code === '23503') { // foreign key violation, meaning a referenced row does not exist in the referenced table
+      return `Project '${project?.name}' permanently deleted successfully`;
+    } catch (error: any) {
+      if (error.code === '23503') {
         throw new ConflictException('Delete Project releases failed, Try again later')
       }
       throw error
     }
-
   }
 
   async confirmMemberInProject(params: ProjectIdentifierParams, email: string) {
@@ -717,6 +951,15 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     const dto = new DetailedProjectDto().fromProjectEntity(project);
     const member = project.memberProject.find(mp => mp.member.email === email);
     dto.memberContext = member ? new ProjectMemberContextDto().fromMemberProjectEntity(member) : undefined;
+
+    if (project.projectType === ProjectType.CONFIG || project.projectType === ProjectType.CONFIG_MAP) {
+      const activeRevision = await this.configRevisionRepo.findOne({
+        where: { projectId: project.id, status: ConfigRevisionStatus.ACTIVE },
+        select: ['semVer'],
+      });
+      dto.configSemVer = activeRevision?.semVer ?? null;
+    }
+
     return dto
   }
 
@@ -783,7 +1026,12 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   async getProjectTokens(projectId: number): Promise<ProjectTokenDto[]> {
     this.logger.log(`Get all tokens for project with id ${projectId}`);
     const tokens = await this.tokenRepo.find({ where: { project: { id: projectId } } })
-    return tokens.map(t => ProjectTokenDto.fromProjectTokenEntity(t))
+    return tokens.map(t => {
+      const dto = ProjectTokenDto.fromProjectTokenEntity(t);
+      const payload = this.jwtService.decode(t.token) as any;
+      dto.description = payload?.data?.description;
+      return dto;
+    })
   }
 
   async getProjectTokenById(params: TokenParams): Promise<ProjectTokenDto> {
@@ -792,7 +1040,10 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     if (!token) {
       throw new NotFoundException(`Token with id ${params.tokenId} for project with id ${params.projectId} not found`)
     }
-    return ProjectTokenDto.fromProjectTokenEntity(token)
+    const dto = ProjectTokenDto.fromProjectTokenEntity(token);
+    const payload = this.jwtService.decode(token.token) as any;
+    dto.description = payload?.data?.description;
+    return dto;
   }
 
   async createToken(dto: CreateProjectTokenDto): Promise<ProjectTokenDto> {
@@ -805,7 +1056,8 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       project.name,
       dto.name,
       dto.neverExpires ?? false,
-      expirationDate
+      expirationDate,
+      dto.description
     );
 
     this.logger.log(`Generated Token: ${token.slice(token.length - 10)}`);
@@ -821,7 +1073,9 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     projectToken.project = project;
     try {
       const savedProjectToken = await this.tokenRepo.save(projectToken);
-      return ProjectTokenDto.fromProjectTokenEntity(savedProjectToken);
+      const result = ProjectTokenDto.fromProjectTokenEntity(savedProjectToken);
+      result.description = dto.description;
+      return result;
     } catch (error) {
       throw new InternalServerErrorException(error);
     }
@@ -854,9 +1108,9 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   }
 
 
-  private generateToken(projectId: number, projectName: string, name: string, neverExpires: boolean, expirationDate?: Date): string {
+  private generateToken(projectId: number, projectName: string, name: string, neverExpires: boolean, expirationDate?: Date, description?: string): string {
     this.logger.log(`Generate token for project with id ${projectId}`);
-    const payload = { projectId, projectName, name, neverExpires }
+    const payload = { projectId, projectName, name, neverExpires, description }
     const expiresIn = neverExpires
       ? '100y'
       : expirationDate
@@ -955,6 +1209,14 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       queryBuilder.where('label.name ILIKE :name', { name: `%${query.name}%` });
     }
 
+    if (query?.applicationCategory) {
+      if (query?.name) {
+        queryBuilder.andWhere('label.application_category = :applicationCategory', { applicationCategory: query.applicationCategory });
+      } else {
+        queryBuilder.where('label.application_category = :applicationCategory', { applicationCategory: query.applicationCategory });
+      }
+    }
+
     queryBuilder.orderBy('label.name', 'ASC');
 
     const labels = await queryBuilder.getMany();
@@ -974,7 +1236,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       );
     }
 
-    const label = this.labelRepo.create({ name: dto.name });
+    const label = this.labelRepo.create({ name: dto.name, applicationCategory: dto.applicationCategory ?? null });
     const savedLabel = await this.labelRepo.save(label);
 
     return LabelDto.fromLabelEntity(savedLabel)
@@ -992,6 +1254,9 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     }
 
     label.name = dto.name;
+    if (dto.applicationCategory !== undefined) {
+      label.applicationCategory = dto.applicationCategory ?? null;
+    }
     const savedLabel = await this.labelRepo.save(label);
 
     return LabelDto.fromLabelEntity(savedLabel);
@@ -1084,28 +1349,32 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
   }
 
   async getOrCreateGitSyncProjectToken(projectId: number): Promise<string> {
-    let tokenEntity = await this.tokenRepo.findOne({
+    const tokenEntity = await this.tokenRepo.findOne({
       where: {
         project: { id: projectId },
-        isActive: true,
         neverExpires: true,
         name: 'git-sync-system',
       },
       order: { createdDate: 'DESC' },
     });
 
-    if (!tokenEntity) {
-      this.logger.log(`Creating git-sync token for project ${projectId}`);
-      const tokenDto = await this.createToken({
-        projectId,
-        projectIdentifier: projectId,
-        name: 'git-sync-system',
-        neverExpires: true,
-      });
-      return tokenDto.token;
+    if (tokenEntity) {
+      if (!tokenEntity.isActive) {
+        throw new BadRequestException(
+          `Git sync token for project ${projectId} is disabled. Re-enable it to resume git sync.`,
+        );
+      }
+      return tokenEntity.token;
     }
 
-    return tokenEntity.token;
+    this.logger.log(`Creating git-sync token for project ${projectId}`);
+    const tokenDto = await this.createToken({
+      projectId,
+      projectIdentifier: projectId,
+      name: 'git-sync-system',
+      neverExpires: true,
+    });
+    return tokenDto.token;
   }
 
 }
