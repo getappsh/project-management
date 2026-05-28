@@ -146,7 +146,7 @@ export class SetReleaseDto {
 
   @ApiProperty({ 
     required: false, 
-    enum: [ReleaseStatusEnum.DRAFT, ReleaseStatusEnum.IN_REVIEW, ReleaseStatusEnum.ARCHIVED, ReleaseStatusEnum.RELEASED],
+    enum: ReleaseStatusEnum,
     description: 'Explicitly set the release status. Allowed values: draft, in_review, archived, released. Takes precedence over isDraft when provided.'
   })
   @IsOptional()
