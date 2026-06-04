@@ -12,7 +12,7 @@ export function extractHeaders(context: ExecutionContext) {
       try {
         headers.user = JSON.parse(headers.user);
       } catch {}
-    } else if (Buffer.isBuffer(headers?.user)) {
+    } else if (headers && Buffer.isBuffer(headers.user)) {
       try {
         headers.user = JSON.parse(headers.user.toString());
       } catch {}
