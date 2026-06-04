@@ -7,7 +7,17 @@ export function extractHeaders(context: ExecutionContext) {
   const msgContext = input.getContext();
  
   if (msgContext instanceof KafkaContext) {
-    return msgContext.getMessage().headers;
+    const headers = msgContext.getMessage().headers;
+    if (headers?.user && typeof headers.user === 'string') {
+      try {
+        headers.user = JSON.parse(headers.user);
+      } catch {}
+    } else if (Buffer.isBuffer(headers?.user)) {
+      try {
+        headers.user = JSON.parse(headers.user.toString());
+      } catch {}
+    }
+    return headers;
   } else if (msgContext instanceof TcpContext) {
     return input.getData()?.headers;
   }
