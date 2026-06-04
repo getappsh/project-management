@@ -29,6 +29,8 @@ export class ProjectAccessGuard implements CanActivate {
     const user = headers?.user;
     const projectToken = headers?.projectToken;
 
+    this.logger.log(`canActivate called - validationMode: ${validateUserToken ? 'user' : validateProjectToken ? 'projectToken' : validateAnyToken ? 'any' : validateProjectList ? 'projectList' : 'none'}, email: ${user?.email}, hasProjectToken: ${!!projectToken}, roles: ${JSON.stringify(roles)}`);
+
     // Handle project list validation
     if (validateProjectList) {
       return this.validateProjectList(request, projectExtractor, projectToken, user?.email, roles);
@@ -37,6 +39,8 @@ export class ProjectAccessGuard implements CanActivate {
     // Handle single project validation (existing logic)
     const projectIdentifier = request.projectIdentifier ?? request?.projectId;
     
+    this.logger.log(`projectIdentifier: ${projectIdentifier} (from projectIdentifier: ${request.projectIdentifier}, projectId: ${request?.projectId})`);
+
     if (!projectIdentifier){
         throw new ForbiddenException(`Project Identifier is not found in the request.`);
     }
@@ -53,8 +57,10 @@ export class ProjectAccessGuard implements CanActivate {
       project = await this.validateAny(projectIdentifier, projectToken, user?.email, roles);
     }
 
+    this.logger.log(`validation result - project: ${project ? `id=${project.id}, name=${project.name}` : 'undefined'}, projectIdentifier: ${projectIdentifier}`);
 
     if (!project || (project.id != projectIdentifier && project.name != projectIdentifier)){
+      this.logger.warn(`Access denied - project: ${project ? `id=${project.id}, name=${project.name}` : 'undefined'}, projectIdentifier: ${projectIdentifier}, idMatch: ${project?.id == projectIdentifier}, nameMatch: ${project?.name == projectIdentifier}`);
       throw new ForbiddenException(`Not allowed in this project: ${projectIdentifier}`)
     }
 
