@@ -29,6 +29,9 @@ export class ProjectAccessGuard implements CanActivate {
     const user = headers?.user;
     const projectToken = headers?.projectToken;
 
+    const headerKeys = headers ? Object.keys(headers) : [];
+    this.logger.log(`extractHeaders result - keys: [${headerKeys}], user type: ${typeof user}, user value: ${JSON.stringify(user)}, projectToken type: ${typeof projectToken}`);
+    this.logger.log(`extractRequest result - keys: [${request ? Object.keys(request) : []}], projectIdentifier: ${request?.projectIdentifier}, projectId: ${request?.projectId}`);
     this.logger.log(`canActivate called - validationMode: ${validateUserToken ? 'user' : validateProjectToken ? 'projectToken' : validateAnyToken ? 'any' : validateProjectList ? 'projectList' : 'none'}, email: ${user?.email}, hasProjectToken: ${!!projectToken}, roles: ${JSON.stringify(roles)}`);
 
     // Handle project list validation
