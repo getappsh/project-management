@@ -1,5 +1,5 @@
 import { DatabaseModule, UploadJwtConfigService,  } from '@app/common';
-import { MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity, PlatformEntity, LabelEntity, ConfigRevisionEntity, ReleaseEntity } from '@app/common/database/entities';
+import { MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity, PlatformEntity, LabelEntity, ConfigRevisionEntity, ReleaseEntity, AlertEntity } from '@app/common/database/entities';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -21,6 +21,8 @@ import { VaultModule } from '@app/common/vault';
 import { VaultCredentialsMigrationService } from './vault-credentials-migration.service';
 import { ConfigProjectProvisioningService } from './config-project-provisioning.service';
 import { ProjectTypeMigrationService } from './project-type-migration.service';
+import { AlertsService } from './alerts.service';
+import { AlertsController } from './alerts.controller';
 
 @Module({
   imports: [
@@ -35,7 +37,7 @@ import { ProjectTypeMigrationService } from './project-type-migration.service';
       MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, 
       RegulationEntity, RegulationTypeEntity, PlatformEntity,
       DeviceEntity, ProjectTokenEntity, DocEntity, LabelEntity,
-      ConfigRevisionEntity, ReleaseEntity,
+      ConfigRevisionEntity, ReleaseEntity, AlertEntity,
     ]),
     OidcModule.forRoot(),
     MicroserviceModule.register({
@@ -51,7 +53,7 @@ import { ProjectTypeMigrationService } from './project-type-migration.service';
     SafeCronModule,
     VaultModule,
   ],
-  controllers: [ProjectManagementController],
+  controllers: [ProjectManagementController, AlertsController],
   providers: [
     ProjectManagementService, 
     RegulationService,
@@ -62,6 +64,7 @@ import { ProjectTypeMigrationService } from './project-type-migration.service';
     VaultCredentialsMigrationService,
     ConfigProjectProvisioningService,
     ProjectTypeMigrationService,
+    AlertsService,
     {
       provide: PROJECT_ACCESS_SERVICE,
       useExisting: ProjectManagementService

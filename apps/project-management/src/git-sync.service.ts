@@ -12,7 +12,7 @@ import {
 } from '@app/common/dto/project-management';
 import { ImportReleaseDto } from '@app/common/dto/delivery';
 import { MicroserviceClient, MicroserviceName } from '@app/common/microservice-client';
-import { UploadTopics, ProjectManagementTopicsEmit } from '@app/common/microservice-client/topics';
+import { UploadTopics, ProjectManagementTopicsEmit, AlertTopicsEmit } from '@app/common/microservice-client/topics';
 import { lastValueFrom } from 'rxjs';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -541,6 +541,22 @@ export class GitSyncService {
 
     // Emit via microservice client
     this.uploadClient.emit(ProjectManagementTopicsEmit.GIT_SYNC_COMPLETED, event);
+
+    // Emit system alert for git sync result
+    const isSuccess = result.status === GitSyncStatus.SUCCESS;
+    this.uploadClient.emit(AlertTopicsEmit.SYSTEM_ALERT, {
+      type: isSuccess ? 'git_sync_success' : 'git_sync_failed',
+      severity: isSuccess ? 'info' : 'warning',
+      message: isSuccess
+        ? `Git sync completed for project ${result.projectId} (v${result.version})`
+        : `Git sync failed for project ${result.projectId}: ${result.error}`,
+      source: 'project-management',
+      metadata: {
+        projectId: result.projectId,
+        version: result.version,
+        ...(result.error && { error: result.error }),
+      },
+    });
   }
 
   /**
