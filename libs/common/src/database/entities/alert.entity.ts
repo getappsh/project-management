@@ -34,10 +34,10 @@ export class AlertEntity extends BaseEntity {
 
   @Column({ name: 'type', type: 'varchar', length: 50 })
   @Index()
-  type: AlertType;
+  type: AlertType | string;
 
   @Column({ name: 'severity', type: 'varchar', length: 20 })
-  severity: AlertSeverity;
+  severity: AlertSeverity | string;
 
   @Column({ name: 'message', type: 'text' })
   message: string;
