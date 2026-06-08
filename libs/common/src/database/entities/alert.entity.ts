@@ -14,8 +14,12 @@ export enum AlertType {
   DEVICE_OFFLINE = 'device_offline',
   GIT_SYNC_SUCCESS = 'git_sync_success',
   GIT_SYNC_FAILED = 'git_sync_failed',
+  SBOM_STARTED = 'sbom_started',
   SBOM_READY = 'sbom_ready',
   SBOM_FAILED = 'sbom_failed',
+  UPLOAD_STARTED = 'upload_started',
+  UPLOAD_COMPLETED = 'upload_completed',
+  UPLOAD_FAILED = 'upload_failed',
   SYSTEM = 'system',
 }
 
