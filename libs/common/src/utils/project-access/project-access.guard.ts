@@ -30,9 +30,9 @@ export class ProjectAccessGuard implements CanActivate {
     const projectToken = headers?.projectToken;
 
     const headerKeys = headers ? Object.keys(headers) : [];
-    this.logger.log(`extractHeaders result - keys: [${headerKeys}], user type: ${typeof user}, user value: ${JSON.stringify(user)}, projectToken type: ${typeof projectToken}`);
-    this.logger.log(`extractRequest result - keys: [${request ? Object.keys(request) : []}], projectIdentifier: ${request?.projectIdentifier}, projectId: ${request?.projectId}`);
-    this.logger.log(`canActivate called - validationMode: ${validateUserToken ? 'user' : validateProjectToken ? 'projectToken' : validateAnyToken ? 'any' : validateProjectList ? 'projectList' : 'none'}, email: ${user?.email}, hasProjectToken: ${!!projectToken}, roles: ${JSON.stringify(roles)}`);
+    this.logger.verbose(`extractHeaders result - keys: [${headerKeys}], user type: ${typeof user}, user value: ${JSON.stringify(user)}, projectToken type: ${typeof projectToken}`);
+    this.logger.verbose(`extractRequest result - keys: [${request ? Object.keys(request) : []}], projectIdentifier: ${request?.projectIdentifier}, projectId: ${request?.projectId}`);
+    this.logger.verbose(`canActivate called - validationMode: ${validateUserToken ? 'user' : validateProjectToken ? 'projectToken' : validateAnyToken ? 'any' : validateProjectList ? 'projectList' : 'none'}, email: ${user?.email}, hasProjectToken: ${!!projectToken}, roles: ${JSON.stringify(roles)}`);
 
     // Handle project list validation
     if (validateProjectList) {
@@ -42,7 +42,7 @@ export class ProjectAccessGuard implements CanActivate {
     // Handle single project validation (existing logic)
     const projectIdentifier = request.projectIdentifier ?? request?.projectId;
     
-    this.logger.log(`projectIdentifier: ${projectIdentifier} (from projectIdentifier: ${request.projectIdentifier}, projectId: ${request?.projectId})`);
+    this.logger.verbose(`projectIdentifier: ${projectIdentifier} (from projectIdentifier: ${request.projectIdentifier}, projectId: ${request?.projectId})`);
 
     if (!projectIdentifier){
         throw new ForbiddenException(`Project Identifier is not found in the request.`);
@@ -60,7 +60,7 @@ export class ProjectAccessGuard implements CanActivate {
       project = await this.validateAny(projectIdentifier, projectToken, user?.email, roles);
     }
 
-    this.logger.log(`validation result - project: ${project ? `id=${project.id}, name=${project.name}` : 'undefined'}, projectIdentifier: ${projectIdentifier}`);
+    this.logger.verbose(`validation result - project: ${project ? `id=${project.id}, name=${project.name}` : 'undefined'}, projectIdentifier: ${projectIdentifier}`);
 
     if (!project || (project.id != projectIdentifier && project.name != projectIdentifier)){
       this.logger.warn(`Access denied - project: ${project ? `id=${project.id}, name=${project.name}` : 'undefined'}, projectIdentifier: ${projectIdentifier}, idMatch: ${project?.id == projectIdentifier}, nameMatch: ${project?.name == projectIdentifier}`);
