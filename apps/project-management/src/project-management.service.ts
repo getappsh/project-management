@@ -1346,6 +1346,7 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
       UploadTopics.GET_RELEASE_BY_VERSION,
       UploadTopics.ARCHIVE_PROJECT_RELEASES,
       UploadTopics.RESTORE_PROJECT_RELEASES,
+      UploadTopics.DELETE_PROJECT_RELEASES,
     ])
     await this.uploadClient.connect()
   }
