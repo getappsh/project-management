@@ -81,12 +81,17 @@ export class ConfigProjectProvisioningService implements OnModuleInit, OnApplica
 
       // Delegate config content provisioning (revisions, groups, S3 cache) to upload
       await lastValueFrom(
-        this.uploadClient.send(UploadTopics.CONFIG_PROVISION_PROJECT_CONTENT, {
+        this.uploadClient.emit(UploadTopics.CONFIG_PROVISION_PROJECT_CONTENT, {
           projectId: project.id,
           deviceId,
           deviceTypeIds,
         }),
-      );
+      ).catch((err) => {
+        this.logger.warn(
+          `Config content provisioning call failed for device ${deviceId} (project ${project?.id}): ${err?.message ?? err}. ` +
+          `The project entity was created – content will be provisioned on next revision apply.`,
+        );
+      });
     }
 
     return project.id;
