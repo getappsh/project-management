@@ -403,7 +403,12 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
     mp = await this.memberProjectRepo.save(mp);
     this.logger.debug(`MemberProject: ${mp}`)
 
-    return new ProjectDto().fromProjectEntity(project)
+    const result = new ProjectDto().fromProjectEntity(project);
+    const gitWarnings = this.gitSyncService.validateGitOpsSettings(projectDto);
+    if (gitWarnings.length > 0) {
+      result.warnings = gitWarnings;
+    }
+    return result;
   }
 
   async editProject(dto: EditProjectDto): Promise<ProjectDto> {
@@ -583,7 +588,12 @@ export class ProjectManagementService implements ProjectAccessService, OnModuleI
 
     try {
       const savedProject = await this.projectRepo.save(project);
-      return new ProjectDto().fromProjectEntity(savedProject);
+      const result = new ProjectDto().fromProjectEntity(savedProject);
+      const gitWarnings = this.gitSyncService.validateGitOpsSettings(dto);
+      if (gitWarnings.length > 0) {
+        result.warnings = gitWarnings;
+      }
+      return result;
     } catch (error) {
       if (error.code === '23505') {
         throw new ConflictException('Project name already exists');

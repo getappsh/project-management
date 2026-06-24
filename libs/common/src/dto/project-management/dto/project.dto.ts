@@ -15,6 +15,17 @@ export enum GitAuthMethod {
   NONE = 'none',
 }
 
+export class GitOpsWarningDto {
+  @ApiProperty({ description: 'Warning code identifier' })
+  code: string;
+
+  @ApiProperty({ description: 'Human-readable warning message' })
+  message: string;
+
+  @ApiProperty({ required: false, description: 'The field that triggered the warning' })
+  field?: string;
+}
+
 
 export class BaseProjectDto {
 
@@ -172,6 +183,9 @@ export class ProjectDto extends BaseProjectDto {
       'Semantic version of the currently active config revision (only set for CONFIG and CONFIG_MAP project types)',
   })
   configSemVer?: string | null;
+
+  @ApiProperty({ required: false, type: [GitOpsWarningDto], description: 'Warnings about git ops configuration (non-blocking)' })
+  warnings?: GitOpsWarningDto[];
 
   fromProjectEntity(project: ProjectEntity) {
     super.fromProjectEntity(project);

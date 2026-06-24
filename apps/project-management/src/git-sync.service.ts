@@ -8,7 +8,8 @@ import {
   TriggerGitSyncDto, 
   CheckReleaseExistsDto, 
   CheckReleaseExistsResultDto,
-  GitSyncCompletedEvent
+  GitSyncCompletedEvent,
+  GitOpsWarningDto,
 } from '@app/common/dto/project-management';
 import { ImportReleaseDto } from '@app/common/dto/delivery';
 import { MicroserviceClient, MicroserviceName } from '@app/common/microservice-client';
@@ -591,5 +592,82 @@ export class GitSyncService {
     return typeof projectIdentifier === 'number'
       ? { id: projectIdentifier }
       : { name: projectIdentifier };
+  }
+
+  validateGitOpsSettings(dto: { gitCloneUrl?: string; gitSshKey?: string; gitHttpsUsername?: string; gitHttpsPassword?: string; gitCloneInterval?: number; gitBranch?: string; gitGetappFilePath?: string }): GitOpsWarningDto[] {
+    const warnings: GitOpsWarningDto[] = [];
+
+    const hasCloneUrl = !!dto.gitCloneUrl;
+    const hasSshKey = !!dto.gitSshKey;
+    const hasHttpsUsername = !!dto.gitHttpsUsername;
+    const hasHttpsPassword = !!dto.gitHttpsPassword;
+    const hasAnyGitSettings = hasSshKey || hasHttpsUsername || hasHttpsPassword || dto.gitCloneInterval !== undefined || !!dto.gitBranch || !!dto.gitGetappFilePath;
+
+    // Git settings provided without a clone URL
+    if (!hasCloneUrl && hasAnyGitSettings) {
+      warnings.push({
+        code: 'GIT_SETTINGS_WITHOUT_URL',
+        message: 'Git settings provided without a clone URL. These settings will be ignored until a clone URL is configured.',
+        field: 'gitCloneUrl',
+      });
+    }
+
+    if (hasCloneUrl) {
+      // No authentication configured
+      if (!hasSshKey && !hasHttpsUsername && !hasHttpsPassword) {
+        warnings.push({
+          code: 'GIT_NO_AUTH',
+          message: 'No authentication configured for git repository. Only public repositories can be cloned without credentials.',
+          field: 'gitCloneUrl',
+        });
+      }
+
+      // Incomplete HTTPS credentials
+      if (hasHttpsUsername && !hasHttpsPassword) {
+        warnings.push({
+          code: 'GIT_HTTPS_MISSING_PASSWORD',
+          message: 'HTTPS username provided without a password. Authentication will likely fail.',
+          field: 'gitHttpsPassword',
+        });
+      }
+      if (!hasHttpsUsername && hasHttpsPassword) {
+        warnings.push({
+          code: 'GIT_HTTPS_MISSING_USERNAME',
+          message: 'HTTPS password provided without a username. Authentication will likely fail.',
+          field: 'gitHttpsUsername',
+        });
+      }
+
+      // Clone interval too low
+      if (dto.gitCloneInterval !== undefined && dto.gitCloneInterval < 5) {
+        warnings.push({
+          code: 'GIT_CLONE_INTERVAL_LOW',
+          message: `Git clone interval is set to ${dto.gitCloneInterval} minute(s). This may cause excessive load on the git server.`,
+          field: 'gitCloneInterval',
+        });
+      }
+
+      // SSH URL with HTTPS credentials or vice versa
+      const cloneUrl = dto.gitCloneUrl!;
+      if (cloneUrl.startsWith('git@') || cloneUrl.startsWith('ssh://')) {
+        if (hasHttpsUsername || hasHttpsPassword) {
+          warnings.push({
+            code: 'GIT_SSH_URL_WITH_HTTPS_CREDENTIALS',
+            message: 'Git clone URL appears to be an SSH URL but HTTPS credentials were provided. Consider using an SSH key instead.',
+            field: 'gitCloneUrl',
+          });
+        }
+      } else if (cloneUrl.startsWith('https://') || cloneUrl.startsWith('http://')) {
+        if (hasSshKey) {
+          warnings.push({
+            code: 'GIT_HTTPS_URL_WITH_SSH_KEY',
+            message: 'Git clone URL appears to be an HTTPS URL but an SSH key was provided. Consider using HTTPS credentials instead.',
+            field: 'gitCloneUrl',
+          });
+        }
+      }
+    }
+
+    return warnings;
   }
 }
