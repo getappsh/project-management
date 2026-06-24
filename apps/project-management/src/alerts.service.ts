@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThanOrEqual } from 'typeorm';
 import { AlertEntity } from '@app/common/database/entities/alert.entity';
+import { ProjectEntity } from '@app/common/database/entities/project.entity';
 
 @Injectable()
 export class AlertsService {
@@ -9,6 +10,7 @@ export class AlertsService {
 
   constructor(
     @InjectRepository(AlertEntity) private readonly alertRepo: Repository<AlertEntity>,
+    @InjectRepository(ProjectEntity) private readonly projectRepo: Repository<ProjectEntity>,
   ) {}
 
   async handleIncomingAlert(data: Partial<AlertEntity>): Promise<void> {
@@ -38,6 +40,26 @@ export class AlertsService {
   async getDeviceAlerts(deviceId: string, limit: number): Promise<AlertEntity[]> {
     return this.alertRepo.find({
       where: { deviceId },
+      order: { createdDate: 'DESC' },
+      take: limit,
+    });
+  }
+
+  async getProjectAlerts(limit: number, projectId?: number, projectName?: string): Promise<AlertEntity[]> {
+    let resolvedProjectId = projectId;
+    if (!resolvedProjectId && projectName) {
+      const project = await this.projectRepo.findOneBy({ name: projectName });
+      if (!project) {
+        this.logger.warn(`Project not found by name: ${projectName}`);
+        return [];
+      }
+      resolvedProjectId = project.id;
+    }
+    if (!resolvedProjectId) {
+      return [];
+    }
+    return this.alertRepo.find({
+      where: { projectId: resolvedProjectId },
       order: { createdDate: 'DESC' },
       take: limit,
     });

@@ -46,6 +46,10 @@ export class AlertEntity extends BaseEntity {
   @Index()
   deviceId?: string;
 
+  @Column({ name: 'project_id', type: 'int', nullable: true })
+  @Index()
+  projectId?: number;
+
   @Column({ name: 'catalog_id', type: 'varchar', nullable: true })
   catalogId?: string;
 

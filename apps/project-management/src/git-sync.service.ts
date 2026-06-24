@@ -552,9 +552,9 @@ export class GitSyncService {
       message: isSuccess
         ? `Git sync completed for project ${result.projectId} (v${result.version})`
         : `Git sync failed for project ${result.projectId}: ${result.error}`,
+      projectId: result.projectId,
       source: 'project-management',
       metadata: {
-        projectId: result.projectId,
         version: result.version,
         ...(result.error && { error: result.error }),
       },

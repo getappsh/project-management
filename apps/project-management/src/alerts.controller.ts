@@ -18,6 +18,7 @@ export class AlertsController {
       severity: data.severity,
       message: data.message,
       deviceId: data.deviceId,
+      projectId: data.projectId,
       catalogId: data.catalogId,
       source: data.source,
       metadata: data.metadata,
@@ -34,5 +35,11 @@ export class AlertsController {
   async getDeviceAlerts(@RpcPayload() data: { deviceId: string; limit?: number }) {
     this.logger.log(`Get alerts for device: ${data.deviceId}, limit: ${data.limit}`);
     return this.alertsService.getDeviceAlerts(data.deviceId, data.limit || 20);
+  }
+
+  @MessagePattern(AlertTopics.GET_PROJECT_ALERTS)
+  async getProjectAlerts(@RpcPayload() data: { projectId?: number; projectName?: string; limit?: number }) {
+    this.logger.log(`Get alerts for project: id=${data.projectId}, name=${data.projectName}, limit: ${data.limit}`);
+    return this.alertsService.getProjectAlerts(data.limit || 20, data.projectId, data.projectName);
   }
 }

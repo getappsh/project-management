@@ -8,6 +8,7 @@ export const AlertTopicsEmit = {
 export const AlertTopics = {
     GET_ALERTS: `getapp-alerts.get-alerts${region}`,
     GET_DEVICE_ALERTS: `getapp-alerts.get-device-alerts${region}`,
+    GET_PROJECT_ALERTS: `getapp-alerts.get-project-alerts${region}`,
 } as const
 
 export const UploadTopics = {
