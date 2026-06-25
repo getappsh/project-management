@@ -1,5 +1,5 @@
 import { DatabaseModule, UploadJwtConfigService,  } from '@app/common';
-import { MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity, PlatformEntity, LabelEntity, ConfigRevisionEntity, ReleaseEntity, AlertEntity } from '@app/common/database/entities';
+import { MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, DeviceEntity, RegulationEntity, RegulationTypeEntity, ProjectTokenEntity, DocEntity, PlatformEntity, LabelEntity, ConfigRevisionEntity, ReleaseEntity } from '@app/common/database/entities';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -21,8 +21,7 @@ import { VaultModule } from '@app/common/vault';
 import { VaultCredentialsMigrationService } from './vault-credentials-migration.service';
 import { ConfigProjectProvisioningService } from './config-project-provisioning.service';
 import { ProjectTypeMigrationService } from './project-type-migration.service';
-import { AlertsService } from './alerts.service';
-import { AlertsController } from './alerts.controller';
+
 
 @Module({
   imports: [
@@ -37,7 +36,7 @@ import { AlertsController } from './alerts.controller';
       MemberEntity, ProjectEntity, ProjectGitSourceEntity, MemberProjectEntity, UploadVersionEntity, 
       RegulationEntity, RegulationTypeEntity, PlatformEntity,
       DeviceEntity, ProjectTokenEntity, DocEntity, LabelEntity,
-      ConfigRevisionEntity, ReleaseEntity, AlertEntity,
+      ConfigRevisionEntity, ReleaseEntity,
     ]),
     OidcModule.forRoot(),
     MicroserviceModule.register({
@@ -50,10 +49,15 @@ import { AlertsController } from './alerts.controller';
       type: MicroserviceType.DEVICE,
       id: "project-management"
     }),
+    MicroserviceModule.register({
+      name: MicroserviceName.DEPLOY_SERVICE,
+      type: MicroserviceType.DEPLOY,
+      id: "project-management"
+    }),
     SafeCronModule,
     VaultModule,
   ],
-  controllers: [ProjectManagementController, AlertsController],
+  controllers: [ProjectManagementController],
   providers: [
     ProjectManagementService, 
     RegulationService,
@@ -64,7 +68,6 @@ import { AlertsController } from './alerts.controller';
     VaultCredentialsMigrationService,
     ConfigProjectProvisioningService,
     ProjectTypeMigrationService,
-    AlertsService,
     {
       provide: PROJECT_ACCESS_SERVICE,
       useExisting: ProjectManagementService

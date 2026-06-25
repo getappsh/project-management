@@ -12,7 +12,7 @@ import {
 } from '@app/common/dto/project-management';
 import { ImportReleaseDto } from '@app/common/dto/delivery';
 import { MicroserviceClient, MicroserviceName } from '@app/common/microservice-client';
-import { UploadTopics, ProjectManagementTopicsEmit } from '@app/common/microservice-client/topics';
+import { AlertTopicsEmit, UploadTopics, ProjectManagementTopicsEmit } from '@app/common/microservice-client/topics';
 import { lastValueFrom } from 'rxjs';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -21,7 +21,7 @@ import { promisify } from 'util';
 import { exec } from 'child_process';
 import { ClsService } from 'nestjs-cls';
 import { ProjectManagementService } from './project-management.service';
-import { AlertsService } from './alerts.service';
+
 import { VaultService } from '@app/common/vault';
 import * as yaml from 'js-yaml';
 
@@ -39,10 +39,11 @@ export class GitSyncService {
     private readonly projectRepo: Repository<ProjectEntity>,
     @Inject(MicroserviceName.UPLOAD_SERVICE)
     private readonly uploadClient: MicroserviceClient,
+    @Inject(MicroserviceName.DEPLOY_SERVICE)
+    private readonly deployClient: MicroserviceClient,
     private readonly cls: ClsService,
     @Inject(forwardRef(() => ProjectManagementService))
     private readonly projectManagementService: ProjectManagementService,
-    private readonly alertsService: AlertsService,
     private readonly vaultService: VaultService,
   ) {}
 
@@ -544,9 +545,9 @@ export class GitSyncService {
     // Emit via microservice client
     this.uploadClient.emit(ProjectManagementTopicsEmit.GIT_SYNC_COMPLETED, event);
 
-    // Save system alert for git sync result
+    // Emit system alert for git sync result
     const isSuccess = result.status === GitSyncStatus.SUCCESS;
-    this.alertsService.handleIncomingAlert({
+    this.deployClient.emit(AlertTopicsEmit.SYSTEM_ALERT, {
       type: isSuccess ? 'git_sync_success' : 'git_sync_failed',
       severity: isSuccess ? 'info' : 'warning',
       message: isSuccess
@@ -558,7 +559,7 @@ export class GitSyncService {
         version: result.version,
         ...(result.error && { error: result.error }),
       },
-    } as any);
+    });
   }
 
   /**
