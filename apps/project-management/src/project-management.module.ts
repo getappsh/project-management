@@ -22,6 +22,7 @@ import { VaultCredentialsMigrationService } from './vault-credentials-migration.
 import { ConfigProjectProvisioningService } from './config-project-provisioning.service';
 import { ProjectTypeMigrationService } from './project-type-migration.service';
 
+
 @Module({
   imports: [
     ConfigModule.forRoot({isGlobal: true}),
@@ -46,6 +47,11 @@ import { ProjectTypeMigrationService } from './project-type-migration.service';
     MicroserviceModule.register({
       name: MicroserviceName.DEVICE_SERVICE,
       type: MicroserviceType.DEVICE,
+      id: "project-management"
+    }),
+    MicroserviceModule.register({
+      name: MicroserviceName.DEPLOY_SERVICE,
+      type: MicroserviceType.DEPLOY,
       id: "project-management"
     }),
     SafeCronModule,
